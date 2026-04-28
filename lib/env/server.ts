@@ -45,6 +45,10 @@ let cachedSupabaseServerEnv: SupabaseServerEnv | undefined;
 let cachedGithubServerEnv: GithubServerEnv | undefined;
 let cachedLocusServerEnv: LocusServerEnv | undefined;
 
+export function isEnvironmentProduction() {
+  return process.env.NODE_ENV === "production";
+}
+
 export function getSupabaseServerEnv(): SupabaseServerEnv {
   if (cachedSupabaseServerEnv) {
     return cachedSupabaseServerEnv;

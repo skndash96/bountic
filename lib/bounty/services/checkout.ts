@@ -3,7 +3,7 @@ import "server-only";
 import { z } from "zod";
 
 import { getLocusServerClient } from "@/lib/clients/locus/server";
-import { getSupabaseServerEnv } from "@/lib/env/server";
+import { getSupabaseServerEnv, isEnvironmentProduction } from "@/lib/env/server";
 import type { CheckoutSession } from "@/lib/bounty/schemas/payloads";
 
 export function toCurrencyAmount(amount: number): string {
@@ -81,7 +81,7 @@ export async function createCheckoutSession(params: {
       description: `Bountic funding for ${params.issueId}`,
       successUrl: params.issueUrl ?? `${env.NEXT_PUBLIC_APP_URL}/explore`,
       cancelUrl: params.issueUrl ?? `${env.NEXT_PUBLIC_APP_URL}/explore`,
-      webhookUrl: `${env.NEXT_PUBLIC_APP_URL}/api/webhooks/locus`,
+      webhookUrl: isEnvironmentProduction() ? `${env.NEXT_PUBLIC_APP_URL}/api/webhooks/locus` : undefined,
       metadata: {
         source: "bountic",
         issueId: params.issueId,
