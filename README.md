@@ -16,7 +16,7 @@
 
 ## ⚡️ Overview
 
-I recently became a victim of an 8 year old [bug](https://github.com/microsoft/vscode/issues/28795#issue-236120546) in VSCode. I wondered why no one had ever worked on it, and it struck me: issues sit idle because there is no easy way for frustrated users to financially incentivize a fix. 
+I recently became a victim of an 8 year old [bug](https://github.com/microsoft/vscode/issues/28795#issue-236120546) in VSCode. I wondered why no one had ever worked on it, and it struck me: issues sit idle because there is no easy way for frustrated users to financially incentivize a fix
 
 This hackathon by Locus provided the exact infrastructure to solve this. So, I built **Bountic**. It acts as an autonomous escrow agent: Maintainers label an issue, funders back it via a web-native checkout, and contributors (both human and AI) get paid instantly when their Pull Request is merged. 
 
