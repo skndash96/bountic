@@ -6,6 +6,59 @@ import { getSupabaseServiceClient } from "@/lib/clients/supabase/server";
 import { getGithubInstallationClient, getGithubRepoInstallationId } from "@/lib/clients/github/server";
 import { buildIssueId } from "@/lib/bounty/issue-id";
 
+const CO_AUTHORED_BY_REGEX = /^Co-authored-by:\s+.+?(?:\(@([a-zA-Z0-9-]+)\)|<([^>]+)>)?/gim;
+
+async function getPrContributors(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  primaryAuthor: string,
+): Promise<string[]> {
+  const contributors = new Set<string>([primaryAuthor]);
+  const installationId = await getGithubRepoInstallationId(owner, repo);
+  const github = await getGithubInstallationClient(installationId);
+
+  const commits = await github.paginate(github.rest.pulls.listCommits, {
+    owner,
+    repo,
+    pull_number: prNumber,
+    per_page: 100,
+  });
+
+  for (const commit of commits) {
+    const commitAuthorLogin = commit.author?.login;
+    if (commitAuthorLogin) {
+      contributors.add(commitAuthorLogin);
+    }
+
+    const message = commit.commit.message;
+    if (!message) {
+      continue;
+    }
+
+    for (const match of message.matchAll(CO_AUTHORED_BY_REGEX)) {
+      const usernameFromAtMention = match[1];
+      if (usernameFromAtMention) {
+        contributors.add(usernameFromAtMention);
+        continue;
+      }
+
+      const email = match[2];
+      if (!email) {
+        continue;
+      }
+
+      const localPart = email.split("@")[0] ?? "";
+      const plusIndex = localPart.lastIndexOf("+");
+      if (plusIndex > -1 && plusIndex < localPart.length - 1) {
+        contributors.add(localPart.slice(plusIndex + 1));
+      }
+    }
+  }
+
+  return [...contributors];
+}
+
 export async function approveBountyPayout(params: {
   owner: string;
   repo: string;
@@ -57,16 +110,20 @@ export async function approveBountyPayout(params: {
     }
   }
 
-  // only single payout for now, later multiple payouts
-  const payoutResult = await resolveAndPayout({
+  const contributors = bounty.winning_pr_number
+    ? await getPrContributors(params.owner, params.repo, bounty.winning_pr_number, bounty.winning_pr_author)
+    : [bounty.winning_pr_author];
+
+  const payoutResults = await resolveAndPayout({
     owner: params.owner,
     repo: params.repo,
     issueNumber: params.issueNumber,
-    winningPrAuthor: bounty.winning_pr_author,
+    winningPrAuthors: contributors,
     winningPrBody,
     amount: bounty.total_amount,
     issueId,
   });
+  const primaryPayoutResult = payoutResults[0];
 
   const now = new Date().toISOString();
 
@@ -74,7 +131,7 @@ export async function approveBountyPayout(params: {
     .from("bounties")
     .update({
       status: "PAID",
-      payout_tx_hash: payoutResult.txHash,
+      payout_tx_hash: primaryPayoutResult?.txHash ?? null,
       paid_at: now,
       approved_by: params.approvedBy,
     })
@@ -84,13 +141,16 @@ export async function approveBountyPayout(params: {
     throw new Error(`Failed to update bounty status to PAID: ${updateError.message}`);
   }
 
-  const { error: payoutEventError } = await supabase.from("payout_events").insert({
+  const totalCents = Math.round(bounty.total_amount * 100);
+  const baseCents = Math.floor(totalCents / contributors.length);
+  const remainderCents = totalCents % contributors.length;
+  const payoutEventRows = payoutResults.map((payoutResult, index) => ({
     issue_id: issueId,
-    recipient_username: bounty.winning_pr_author,
-    amount: bounty.total_amount,
+    recipient_username: contributors[index] ?? bounty.winning_pr_author!,
+    amount: (baseCents + (index < remainderCents ? 1 : 0)) / 100,
     locus_transaction_id: payoutResult.transactionId,
     transaction_hash: payoutResult.txHash,
-    status: "SUCCESS",
+    status: "SUCCESS" as const,
     metadata: {
       approved_by: params.approvedBy,
       payout_source: "web",
@@ -98,7 +158,8 @@ export async function approveBountyPayout(params: {
       recipient_email: payoutResult.recipientEmail,
       recipient_wallet: payoutResult.recipientWallet,
     },
-  });
+  }));
+  const { error: payoutEventError } = await supabase.from("payout_events").insert(payoutEventRows);
 
   if (payoutEventError) {
     throw new Error(`Failed to persist payout event: ${payoutEventError.message}`);
@@ -109,11 +170,13 @@ export async function approveBountyPayout(params: {
     event_type: "PAYOUT_SENT",
     actor_username: bounty.winning_pr_author,
     amount: bounty.total_amount,
-    tx_hash: payoutResult.txHash,
+    tx_hash: primaryPayoutResult?.txHash ?? null,
     metadata: {
       approved_by: params.approvedBy,
       payout_source: "web",
-      payout_type: payoutResult.payoutType,
+      contributors,
+      payout_count: payoutResults.length,
+      payout_types: payoutResults.map((payout) => payout.payoutType),
     },
   });
 
@@ -126,12 +189,12 @@ export async function approveBountyPayout(params: {
   return {
     issueId,
     amount: bounty.total_amount,
-    recipient: bounty.winning_pr_author,
-    payoutType: payoutResult.payoutType,
-    recipientEmail: payoutResult.recipientEmail,
-    recipientWallet: payoutResult.recipientWallet,
-    txHash: payoutResult.txHash,
-    transactionId: payoutResult.transactionId,
+    recipient: contributors.join(", "),
+    payoutType: primaryPayoutResult?.payoutType ?? "unclaimed",
+    recipientEmail: primaryPayoutResult?.recipientEmail ?? null,
+    recipientWallet: primaryPayoutResult?.recipientWallet ?? null,
+    txHash: primaryPayoutResult?.txHash ?? null,
+    transactionId: primaryPayoutResult?.transactionId ?? `multi_${Date.now()}`,
     approvedBy: params.approvedBy,
   };
 }
