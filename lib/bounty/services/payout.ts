@@ -141,36 +141,60 @@ export async function resolveAndPayout(params: {
   owner: string;
   repo: string;
   issueNumber: number;
-  winningPrAuthor: string;
+  winningPrAuthors: string[];
   winningPrBody: string | null;
   amount: number;
   issueId: string;
-}): Promise<PayoutResult> {
+}): Promise<PayoutResult[]> {
+  const numContributors = params.winningPrAuthors.length;
+  if (numContributors === 0) {
+    throw new Error("No contributors found for payout");
+  }
+
+  const totalCents = Math.round(params.amount * 100);
+  const baseCents = Math.floor(totalCents / numContributors);
+  const remainderCents = totalCents % numContributors;
+
   const walletFromPr = extractWalletFromPrBody(params.winningPrBody);
-  const recipientEmail = await getRecipientEmail(params.winningPrAuthor);
+  const payoutResults: PayoutResult[] = [];
 
-  if (walletFromPr) {
-    return callLocusPayoutByWallet({
-      toAddress: walletFromPr,
-      amount: params.amount,
-      memo: `Bountic payout for ${params.issueId}`,
-    });
+  for (const [i, winningPrAuthor] of params.winningPrAuthors.entries()) {
+    const payoutAmount = (baseCents + (i < remainderCents ? 1 : 0)) / 100;
+    const recipientEmail = await getRecipientEmail(winningPrAuthor);
+    
+    if (i === 0 && walletFromPr) {
+      payoutResults.push(
+        await callLocusPayoutByWallet({
+          toAddress: walletFromPr,
+          amount: payoutAmount,
+          memo: `Bountic payout for ${params.issueId}`,
+        }),
+      );
+      continue;
+    }
+
+    if (recipientEmail) {
+      payoutResults.push(
+        await callLocusPayoutByEmail({
+          toEmail: recipientEmail,
+          amount: payoutAmount,
+          memo: `Bountic payout for ${params.issueId}`,
+        }),
+      );
+      continue;
+    }
+
+    payoutResults.push(
+      await handleUnclaimedPayout({
+        owner: params.owner,
+        repo: params.repo,
+        issueNumber: params.issueNumber,
+        winningPrAuthor,
+        amount: payoutAmount,
+        issueId: params.issueId,
+      }),
+    );
   }
 
-  if (recipientEmail) {
-    return callLocusPayoutByEmail({
-      toEmail: recipientEmail,
-      amount: params.amount,
-      memo: `Bountic payout for ${params.issueId}`,
-    });
-  }
-
-  return handleUnclaimedPayout({
-    owner: params.owner,
-    repo: params.repo,
-    issueNumber: params.issueNumber,
-    winningPrAuthor: params.winningPrAuthor,
-    amount: params.amount,
-    issueId: params.issueId,
-  });
+  return payoutResults;
 }
