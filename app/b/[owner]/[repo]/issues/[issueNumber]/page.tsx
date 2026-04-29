@@ -77,10 +77,41 @@ function renderActivityText(event: {
   }
 
   if (event.event_type === "BOUNTY_LOCKED") {
+    const coauthors =
+      typeof event.metadata === "object" &&
+      event.metadata !== null &&
+      "coauthors" in event.metadata &&
+      Array.isArray((event.metadata as { coauthors?: string[] }).coauthors)
+        ? (event.metadata as { coauthors: string[] }).coauthors
+        : null;
+    if (coauthors && coauthors.length > 0) {
+      const allNames = [event.actor_username ?? "unknown", ...coauthors].map(
+        (u) => `@${u}`,
+      );
+      return `Bounty locked after merge of PR #${event.pr_number ?? "?"} — split among ${allNames.join(", ")}`;
+    }
     return `Bounty locked after merge of PR #${event.pr_number ?? "?"}`;
   }
 
-  return `Bounty paid to @${event.actor_username ?? "unknown"} - tx ${event.tx_hash ?? "pending"}`;
+  if (event.event_type === "PAYOUT_SENT") {
+    const splitCount =
+      typeof event.metadata === "object" &&
+      event.metadata !== null &&
+      "split_count" in event.metadata
+        ? (event.metadata as { split_count?: number }).split_count
+        : null;
+    const splitTotal =
+      typeof event.metadata === "object" &&
+      event.metadata !== null &&
+      "split_total" in event.metadata
+        ? (event.metadata as { split_total?: number }).split_total
+        : null;
+    if (splitCount && splitCount > 1 && splitTotal) {
+      return `Paid $${formatAmount(event.amount ?? 0)} to @${event.actor_username ?? "unknown"} (${splitCount}-way split of $${formatAmount(splitTotal)}) - tx ${event.tx_hash ?? "pending"}`;
+    }
+    return `Bounty paid to @${event.actor_username ?? "unknown"} - tx ${event.tx_hash ?? "pending"}`;
+  }
+  return `Event: ${event.event_type}`;
 }
 
 function getActivityBadgeClass(eventType: string) {
@@ -229,6 +260,34 @@ export default async function BountyDetailPage(props: Props) {
               {bounty.status === "OPEN" ? (
                 <div className="mt-5">
                   <FundButton issueId={bounty.issue_id} issueUrl={issueUrl} />
+                </div>
+              ) : null}
+
+              {bounty.status === "LOCKED" &&
+              bounty.winning_pr_author ? (
+                <div className="mt-4 rounded-xl border border-zinc-800/80 bg-zinc-900/70 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    Winner{bounty.winning_pr_coauthors && bounty.winning_pr_coauthors.length > 0 ? "s" : ""}
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-sm text-emerald-300">
+                      @{bounty.winning_pr_author}
+                      {bounty.winning_pr_coauthors && bounty.winning_pr_coauthors.length > 0 && (
+                        <span className="text-zinc-400"> (PR author)</span>
+                      )}
+                    </p>
+                    {bounty.winning_pr_coauthors?.map((coauthor) => (
+                      <p key={coauthor} className="text-sm text-emerald-300">
+                        @{coauthor}
+                        <span className="text-zinc-400"> (co-author)</span>
+                      </p>
+                    ))}
+                  </div>
+                  {bounty.winning_pr_coauthors && bounty.winning_pr_coauthors.length > 0 && (
+                    <p className="mt-2 text-xs text-zinc-500">
+                      Bounty will be split ${(bounty.total_amount / (1 + bounty.winning_pr_coauthors.length)).toFixed(2)} USDC each
+                    </p>
+                  )}
                 </div>
               ) : null}
 

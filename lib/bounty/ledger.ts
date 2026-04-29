@@ -97,6 +97,7 @@ export function buildLockedCommentBody(
   issueId: string,
   amount: number,
   winnerUsername: string,
+  coAuthors?: string[],
 ): string {
   const bountyInfo = parseIssueId(issueId)!;
   const bountyUrl = `${process.env.NEXT_PUBLIC_APP_URL}/b/${bountyInfo.owner}/${bountyInfo.repo}/issues/${bountyInfo.issueNumber}`;
@@ -104,13 +105,31 @@ export function buildLockedCommentBody(
   const lines = [
     "🔒 **Bounty Locked**",
     "",
-    `@${winnerUsername} your PR was merged. Great work!`,
+  ];
+
+  if (coAuthors && coAuthors.length > 0) {
+    const allContributors = [winnerUsername, ...coAuthors];
+    const contributorMentions = allContributors.map((u) => `@${u}`).join(", ");
+    const perPersonAmount = (amount / allContributors.length).toFixed(2);
+
+    lines.push(
+      `${contributorMentions} — your PR was merged. Great work!`,
+      "",
+      `This bounty ($${amount.toFixed(2)} USDC) will be split equally among ${allContributors.length} contributors (~$${perPersonAmount} USDC each).`,
+    );
+  } else {
+    lines.push(
+      `@${winnerUsername} your PR was merged. Great work!`,
+    );
+  }
+
+  lines.push(
     "",
     `The bounty is now ready for payout. Please wait for the maintainers to release the bounty. [Bounty Page](${bountyUrl})`,
     "",
     "---",
     "_Bountic: Autonomous USDC bounties for open source_",
-  ];
+  );
 
   return lines.join("\n");
 }

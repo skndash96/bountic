@@ -59,6 +59,7 @@ type BountyResponse = {
   winning_pr_number: number | null;
   winning_pr_author: string | null;
   winning_pr_url: string | null;
+  winning_pr_coauthors: string[] | null;
   locked_at: string | null;
   paid_at: string | null;
   approved_by: string | null;
@@ -107,7 +108,7 @@ export async function GET(
   const { data: bounty, error: bountyError } = await supabase
     .from("bounties")
     .select(
-      "issue_id, status, total_amount, issue_title, issue_body, issue_state, issue_url, ledger_comment_id, payout_tx_hash, winning_pr_number, winning_pr_author, winning_pr_url, locked_at, paid_at, approved_by, created_at, updated_at",
+      "issue_id, status, total_amount, issue_title, issue_body, issue_state, issue_url, ledger_comment_id, payout_tx_hash, winning_pr_number, winning_pr_author, winning_pr_url, winning_pr_coauthors, locked_at, paid_at, approved_by, created_at, updated_at",
     )
     .eq("issue_id", issueId)
     .maybeSingle();
@@ -211,6 +212,9 @@ export async function GET(
     winning_pr_number: bounty.winning_pr_number,
     winning_pr_author: bounty.winning_pr_author,
     winning_pr_url: bounty.winning_pr_url,
+    winning_pr_coauthors: Array.isArray(bounty.winning_pr_coauthors)
+      ? (bounty.winning_pr_coauthors as string[])
+      : null,
     locked_at: bounty.locked_at,
     paid_at: bounty.paid_at,
     approved_by: bounty.approved_by,

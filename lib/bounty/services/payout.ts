@@ -174,3 +174,99 @@ export async function resolveAndPayout(params: {
     issueId: params.issueId,
   });
 }
+
+/**
+ * Resolve and pay a single contributor their share of a bounty.
+ */
+async function resolveAndPaySingleContributor(params: {
+  owner: string;
+  repo: string;
+  issueNumber: number;
+  contributorUsername: string;
+  winningPrBody: string | null;
+  amount: number;
+  issueId: string;
+}): Promise<PayoutResult> {
+  // Only extract wallet from PR body for the primary author
+  // (co-authors don't typically add their own wallet tags)
+  const walletFromPr = extractWalletFromPrBody(params.winningPrBody);
+  const recipientEmail = await getRecipientEmail(params.contributorUsername);
+
+  if (walletFromPr) {
+    return callLocusPayoutByWallet({
+      toAddress: walletFromPr,
+      amount: params.amount,
+      memo: `Bountic payout for ${params.issueId}`,
+    });
+  }
+
+  if (recipientEmail) {
+    return callLocusPayoutByEmail({
+      toEmail: recipientEmail,
+      amount: params.amount,
+      memo: `Bountic payout for ${params.issueId}`,
+    });
+  }
+
+  return handleUnclaimedPayout({
+    owner: params.owner,
+    repo: params.repo,
+    issueNumber: params.issueNumber,
+    winningPrAuthor: params.contributorUsername,
+    amount: params.amount,
+    issueId: params.issueId,
+  });
+}
+
+export type MultiPayoutResult = {
+  contributor: string;
+  share: number;
+} & PayoutResult;
+
+/**
+ * Distribute bounty payout among multiple contributors.
+ * The total amount is split equally. Any rounding remainder goes to the first contributor (PR author).
+ */
+export async function resolveAndPayoutMulti(params: {
+  owner: string;
+  repo: string;
+  issueNumber: number;
+  contributors: string[];
+  winningPrBody: string | null;
+  amount: number;
+  issueId: string;
+}): Promise<MultiPayoutResult[]> {
+  const { contributors } = params;
+
+  if (contributors.length === 0) {
+    throw new Error("At least one contributor is required");
+  }
+
+  if (contributors.length === 1) {
+    const result = await resolveAndPaySingleContributor({
+      ...params,
+      contributorUsername: contributors[0],
+    });
+    return [{ ...result, contributor: contributors[0], share: params.amount }];
+  }
+
+  // Split equally, with rounding remainder going to the first contributor (PR author)
+  const baseShare = Math.floor((params.amount / contributors.length) * 100) / 100;
+  const remainder = Math.round((params.amount - baseShare * contributors.length) * 100) / 100;
+
+  const results: MultiPayoutResult[] = [];
+
+  for (let i = 0; i < contributors.length; i++) {
+    const share = i === 0 ? baseShare + remainder : baseShare;
+
+    const result = await resolveAndPaySingleContributor({
+      ...params,
+      contributorUsername: contributors[i],
+      amount: share,
+    });
+
+    results.push({ ...result, contributor: contributors[i], share });
+  }
+
+  return results;
+}
