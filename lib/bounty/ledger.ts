@@ -96,7 +96,7 @@ export function buildBountyActiveBody(
 export function buildLockedCommentBody(
   issueId: string,
   amount: number,
-  winnerUsername: string,
+  payouts: Array<{ username: string, amount: number }>,
 ): string {
   const bountyInfo = parseIssueId(issueId)!;
   const bountyUrl = `${process.env.NEXT_PUBLIC_APP_URL}/b/${bountyInfo.owner}/${bountyInfo.repo}/issues/${bountyInfo.issueNumber}`;
@@ -104,13 +104,24 @@ export function buildLockedCommentBody(
   const lines = [
     "🔒 **Bounty Locked**",
     "",
-    `@${winnerUsername} your PR was merged. Great work!`,
+  ];
+
+  if (payouts.length > 1) {
+    lines.push("Multiple contributors detected. Great work!");
+    for (const payout of payouts) {
+      lines.push(`- @${payout.username} receiving ${payout.amount}% of the bounty.`);
+    }
+  } else if (payouts.length === 1) {
+    lines.push(`@${payouts[0].username} your PR was merged. Great work!`);
+  }
+  
+  lines.push(
     "",
     `The bounty is now ready for payout. Please wait for the maintainers to release the bounty. [Bounty Page](${bountyUrl})`,
     "",
     "---",
     "_Bountic: Autonomous USDC bounties for open source_",
-  ];
+  );
 
   return lines.join("\n");
 }

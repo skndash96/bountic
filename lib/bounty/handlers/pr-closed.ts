@@ -5,7 +5,7 @@ import { buildIssueId } from "@/lib/bounty/issue-id";
 import { buildLockedCommentBody } from "@/lib/bounty/ledger";
 import { prClosedPayloadSchema } from "@/lib/bounty/schemas/payloads";
 import { getSupabaseServiceClient } from "@/lib/clients/supabase/server";
-import { extractIssueNumberFromPrBody } from "@/lib/bounty/commands";
+import { extractIssueNumberFromPrBody, extractContributor } from "@/lib/bounty/commands";
 
 async function getIssueInstallationClient(owner: string, repo: string, installationId?: number) {
   if (installationId) {
@@ -52,9 +52,11 @@ export async function handlePrClosed(eventPayload: unknown) {
     .from("bounties")
     .update({
       status: "LOCKED",
-      winning_pr_number: payload.pull_request.number,
-      winning_pr_author: payload.pull_request.user.login,
-      winning_pr_url: payload.pull_request.html_url ?? null,
+      winning_pull_request: {
+        pr_author: payload.pull_request.user.login,
+        pr_number: payload.pull_request.number,
+        pr_url: payload.pull_request.html_url ?? null,
+      },
       locked_at: new Date().toISOString(),
     })
     .eq("issue_id", issueId);
@@ -63,21 +65,42 @@ export async function handlePrClosed(eventPayload: unknown) {
     throw new Error(`Failed to lock bounty: ${lockError.message}`);
   }
 
-  const { error: activityError } = await supabase.from("activity_events").insert({
-    issue_id: issueId,
-    event_type: "BOUNTY_LOCKED",
-    actor_username: payload.pull_request.user.login,
-    amount: bounty.total_amount,
-    pr_number: payload.pull_request.number,
-    pr_url: payload.pull_request.html_url ?? null,
-    metadata: {
-      source: "pull_request.closed",
-      merged: true,
-    },
-  });
+  const contributors = extractContributor(payload.pull_request.body);
 
-  if (activityError) {
-    throw new Error(`Failed to record lock activity: ${activityError.message}`);
+  if (contributors) {
+    const totalPercentage = contributors.reduce((acc, c) => acc + c.percentage, 0);
+    if (totalPercentage !== 100) {
+      throw new Error("Payout percentages do not add up to 100");
+    }
+  }
+
+  const payouts = contributors
+    ? contributors.map((c) => ({
+        username: c.username,
+        amount: bounty.total_amount * (c.percentage / 100),
+      }))
+    : [{
+        username: payload.pull_request.user.login,
+        amount: bounty.total_amount,
+      }];
+
+  for (const payout of payouts) {
+    const { error: activityError } = await supabase.from("activity_events").insert({
+      issue_id: issueId,
+      event_type: "BOUNTY_LOCKED",
+      actor_username: payout.username,
+      amount: payout.amount,
+      pr_number: payload.pull_request.number,
+      pr_url: payload.pull_request.html_url ?? null,
+      metadata: {
+        source: "pull_request.closed",
+        merged: true,
+      },
+    });
+
+    if (activityError) {
+      throw new Error(`Failed to record lock activity: ${activityError.message}`);
+    }
   }
 
   const github = await getIssueInstallationClient(owner, repo, payload.installation?.id);
@@ -85,7 +108,7 @@ export async function handlePrClosed(eventPayload: unknown) {
   const body = buildLockedCommentBody(
     issueId,
     bounty.total_amount,
-    payload.pull_request.user.login,
+    payouts,
   );
 
   await github.rest.issues.createComment({
