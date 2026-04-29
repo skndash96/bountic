@@ -6,6 +6,7 @@ import { buildLockedCommentBody } from "@/lib/bounty/ledger";
 import { prClosedPayloadSchema } from "@/lib/bounty/schemas/payloads";
 import { getSupabaseServiceClient } from "@/lib/clients/supabase/server";
 import { extractIssueNumberFromPrBody } from "@/lib/bounty/commands";
+import { parseCoAuthors, getAllContributors } from "@/lib/bounty/coauthors";
 
 async function getIssueInstallationClient(owner: string, repo: string, installationId?: number) {
   if (installationId) {
@@ -48,6 +49,10 @@ export async function handlePrClosed(eventPayload: unknown) {
     return { handled: false, reason: "no-bounty-or-already-paid" };
   }
 
+  // Extract co-authors from PR body
+  const coAuthors = parseCoAuthors(payload.pull_request.body);
+  const contributors = getAllContributors(payload.pull_request.user.login, coAuthors);
+
   const { error: lockError } = await supabase
     .from("bounties")
     .update({
@@ -55,6 +60,7 @@ export async function handlePrClosed(eventPayload: unknown) {
       winning_pr_number: payload.pull_request.number,
       winning_pr_author: payload.pull_request.user.login,
       winning_pr_url: payload.pull_request.html_url ?? null,
+      winning_pr_coauthors: contributors.length > 1 ? contributors.slice(1) : null,
       locked_at: new Date().toISOString(),
     })
     .eq("issue_id", issueId);
@@ -73,6 +79,7 @@ export async function handlePrClosed(eventPayload: unknown) {
     metadata: {
       source: "pull_request.closed",
       merged: true,
+      coauthors: contributors.length > 1 ? contributors.slice(1) : [],
     },
   });
 
@@ -86,6 +93,7 @@ export async function handlePrClosed(eventPayload: unknown) {
     issueId,
     bounty.total_amount,
     payload.pull_request.user.login,
+    contributors.length > 1 ? contributors.slice(1) : undefined,
   );
 
   await github.rest.issues.createComment({

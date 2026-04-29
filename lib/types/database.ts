@@ -45,6 +45,7 @@ export type Database = {
           winning_pr_number: number | null;
           winning_pr_author: string | null;
           winning_pr_url: string | null;
+          winning_pr_coauthors: Json | null;
           locked_at: string | null;
           paid_at: string | null;
           approved_by: string | null;
@@ -65,6 +66,7 @@ export type Database = {
           winning_pr_number?: number | null;
           winning_pr_author?: string | null;
           winning_pr_url?: string | null;
+          winning_pr_coauthors?: Json | null;
           locked_at?: string | null;
           paid_at?: string | null;
           approved_by?: string | null;
@@ -85,6 +87,7 @@ export type Database = {
           winning_pr_number?: number | null;
           winning_pr_author?: string | null;
           winning_pr_url?: string | null;
+          winning_pr_coauthors?: Json | null;
           locked_at?: string | null;
           paid_at?: string | null;
           approved_by?: string | null;

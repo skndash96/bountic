@@ -136,6 +136,7 @@ alter table public.bounties add column if not exists issue_url text;
 alter table public.bounties add column if not exists winning_pr_number integer;
 alter table public.bounties add column if not exists winning_pr_author text;
 alter table public.bounties add column if not exists winning_pr_url text;
+alter table public.bounties add column if not exists winning_pr_coauthors jsonb;
 alter table public.bounties add column if not exists locked_at timestamptz;
 alter table public.bounties add column if not exists paid_at timestamptz;
 alter table public.bounties add column if not exists approved_by text;
