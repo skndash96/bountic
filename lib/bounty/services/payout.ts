@@ -7,12 +7,25 @@ import { getGithubInstallationClient, getGithubRepoInstallationId } from "@/lib/
 
 const BOUNTIC_ADDRESS_REGEX = /<!--\s*bountic-address:\s*(0x[a-fA-F0-9]{40})\s*-->/i;
 
+export type Contributor = {
+  githubUsername: string;
+  prBody: string | null;
+  /**
+   * The percentage of the total bounty reward that goes to this PR.
+   * Represented as a number between 0 and 1.
+   */
+  payoutWeight: number;
+  amount?: number; // Add amount to contributor object
+};
+
 export type PayoutResult = {
   transactionId: string;
   txHash: string | null;
   payoutType: "wallet" | "email" | "unclaimed";
   recipientEmail?: string | null;
   recipientWallet?: string | null;
+  amount: number;
+  contributor: Contributor;
 };
 
 function extractWalletFromPrBody(prBody: string | null): string | null {
@@ -52,6 +65,7 @@ export async function callLocusPayoutByEmail(params: {
   toEmail: string;
   amount: number;
   memo: string;
+  contributor: Contributor;
 }): Promise<PayoutResult> {
   const locus = getLocusServerClient();
 
@@ -74,6 +88,8 @@ export async function callLocusPayoutByEmail(params: {
       txHash: payload.tx_hash ?? null,
       payoutType: "email",
       recipientEmail: params.toEmail,
+      amount: params.amount,
+      contributor: params.contributor,
     };
   } catch (error) {
     console.error("Locus email payout failed:", error);
@@ -85,6 +101,7 @@ export async function callLocusPayoutByWallet(params: {
   toAddress: string;
   amount: number;
   memo: string;
+  contributor: Contributor;
 }): Promise<PayoutResult> {
   const locus = getLocusServerClient();
 
@@ -105,6 +122,8 @@ export async function callLocusPayoutByWallet(params: {
     txHash: payload.tx_hash ?? null,
     payoutType: "wallet",
     recipientWallet: params.toAddress,
+    amount: params.amount,
+    contributor: params.contributor,
   };
 }
 
@@ -112,8 +131,7 @@ export async function handleUnclaimedPayout(params: {
   owner: string;
   repo: string;
   issueNumber: number;
-  winningPrAuthor: string;
-  amount: number;
+  contributor: Contributor;
   issueId: string;
 }): Promise<PayoutResult> {
   const env = getSupabaseServerEnv();
@@ -121,8 +139,8 @@ export async function handleUnclaimedPayout(params: {
   await commentOnIssue({
     owner: params.owner,
     repo: params.repo,
-    issueNumber: params.issueNumber,
-    body: `🎉 Congratulations @${params.winningPrAuthor}! You've won this bounty ($${params.amount.toFixed(2)} USDC).
+    issue_number: params.issueNumber,
+    body: `🎉 Congratulations @${params.contributor.githubUsername}! You've won a portion of this bounty ($${params.contributor.amount?.toFixed(2)} USDC).
 
 To claim your payout, please connect your [GitHub account](${env.NEXT_PUBLIC_APP_URL}/connect)
 
@@ -134,6 +152,8 @@ Once connected, a maintainer can approve your payout and the funds will be sent 
     txHash: null,
     payoutType: "unclaimed",
     recipientEmail: null,
+    amount: params.contributor.amount!,
+    contributor: params.contributor,
   };
 }
 
@@ -141,36 +161,41 @@ export async function resolveAndPayout(params: {
   owner: string;
   repo: string;
   issueNumber: number;
-  winningPrAuthor: string;
-  winningPrBody: string | null;
-  amount: number;
+  totalAmount: number;
+  contributors: Contributor[];
   issueId: string;
-}): Promise<PayoutResult> {
-  const walletFromPr = extractWalletFromPrBody(params.winningPrBody);
-  const recipientEmail = await getRecipientEmail(params.winningPrAuthor);
+}): Promise<PayoutResult[]> {
+  const results: PayoutResult[] = [];
 
-  if (walletFromPr) {
-    return callLocusPayoutByWallet({
-      toAddress: walletFromPr,
-      amount: params.amount,
-      memo: `Bountic payout for ${params.issueId}`,
-    });
+  for (const contributor of params.contributors) {
+    const proportionalAmount = params.totalAmount * contributor.payoutWeight;
+    contributor.amount = proportionalAmount; // Add amount to contributor object
+    const walletFromPr = extractWalletFromPrBody(contributor.prBody);
+    const recipientEmail = await getRecipientEmail(contributor.githubUsername);
+
+    if (walletFromPr) {
+      results.push(await callLocusPayoutByWallet({
+        toAddress: walletFromPr,
+        amount: proportionalAmount,
+        memo: `Bountic payout for ${params.issueId}`,
+        contributor: contributor, // Pass contributor to payout function
+      }));
+    } else if (recipientEmail) {
+      results.push(await callLocusPayoutByEmail({
+        toEmail: recipientEmail,
+        amount: proportionalAmount,
+        memo: `Bountic payout for ${params.issueId}`,
+        contributor: contributor, // Pass contributor to payout function
+      }));
+    } else {
+      results.push(await handleUnclaimedPayout({
+        owner: params.owner,
+        repo: params.repo,
+        issueNumber: params.issueNumber,
+        contributor: contributor,
+        issueId: params.issueId,
+      }));
+    }
   }
-
-  if (recipientEmail) {
-    return callLocusPayoutByEmail({
-      toEmail: recipientEmail,
-      amount: params.amount,
-      memo: `Bountic payout for ${params.issueId}`,
-    });
-  }
-
-  return handleUnclaimedPayout({
-    owner: params.owner,
-    repo: params.repo,
-    issueNumber: params.issueNumber,
-    winningPrAuthor: params.winningPrAuthor,
-    amount: params.amount,
-    issueId: params.issueId,
-  });
+  return results;
 }
