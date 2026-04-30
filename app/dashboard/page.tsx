@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, type LucideIcon } from "lucide-react";
+import { TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, ArrowUp, ArrowDown, type LucideIcon } from "lucide-react";
 
 import { fetchMe, type DashboardData } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
@@ -121,6 +121,11 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+  const handleSort = () => {
+    setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+  };
 
   useEffect(() => {
     fetchMe()
@@ -153,7 +158,15 @@ export default function DashboardPage() {
     );
   }
 
-  const { user, funded_bounties, won_bounties, stats } = data;
+  const { user, funded_bounties, stats } = data;
+
+  const sortedWonBounties = [...data.won_bounties].sort((a, b) => {
+    if (sortOrder === "asc") {
+      return a.total_amount - b.total_amount;
+    } else {
+      return b.total_amount - a.total_amount;
+    }
+  });
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8">
@@ -214,6 +227,10 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-zinc-100">Bounties You Won</h2>
+            <Button variant="ghost" size="sm" onClick={handleSort}>
+              Amount
+              {sortOrder === "asc" ? <ArrowUp className="ml-2 h-4 w-4" /> : <ArrowDown className="ml-2 h-4 w-4" />}
+            </Button>
           </div>
           <div className="mt-4 space-y-3">
             {won_bounties.length === 0 ? (
@@ -222,7 +239,7 @@ export default function DashboardPage() {
                 <p className="mt-1 text-sm text-zinc-500">Submit a PR to start earning!</p>
               </div>
             ) : (
-              won_bounties.slice(0, 5).map((bounty) => (
+              sortedWonBounties.slice(0, 5).map((bounty) => (
                 <BountyRow key={bounty.issue_id} bounty={bounty} type="won" />
               ))
             )}
