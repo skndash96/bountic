@@ -85,11 +85,11 @@ function BountyRow({
             <Badge variant="outline" className={getStatusColor(bounty.status)}>
               {bounty.status}
             </Badge>
-            <span className="font-mono text-xs text-zinc-500">
+            <span className="font-mono text-xs text-zinc-500 whitespace-nowrap">
               {bounty.owner}/{bounty.repo}#{bounty.issue_number}
             </span>
           </div>
-          <p className="mt-2 truncate font-medium text-zinc-200 group-hover:text-emerald-300">
+          <p className="mt-2 truncate font-medium text-zinc-200 group-hover:text-emerald-300 whitespace-nowrap">
             {bounty.issue_title || `Issue #${bounty.issue_number}`}
           </p>
           <p className="mt-1 text-xs text-zinc-500">
@@ -193,21 +193,23 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-zinc-100">Bounties You Funded</h2>
           </div>
-          <div className="mt-4 space-y-3">
-            {funded_bounties.length === 0 ? (
-              <div className="rounded-xl min-h-28 border border-zinc-800/60 bg-zinc-900/40 p-8 text-center">
-                <p className="text-zinc-400">You haven&apos;t funded any bounties yet</p>
-              </div>
-            ) : (
-              funded_bounties.slice(0, 5).map((bounty) => (
-                <BountyRow key={bounty.issue_id} bounty={bounty} type="funded" />
-              ))
-            )}
-            {funded_bounties.length > 5 && (
-              <p className="text-center text-sm text-zinc-500">
-                +{funded_bounties.length - 5} more
-              </p>
-            )}
+          <div className="overflow-x-auto">
+            <div className="mt-4 space-y-3">
+              {funded_bounties.length === 0 ? (
+                <div className="rounded-xl min-h-28 border border-zinc-800/60 bg-zinc-900/40 p-8 text-center">
+                  <p className="text-zinc-400">You haven&apos;t funded any bounties yet</p>
+                </div>
+              ) : (
+                funded_bounties.slice(0, 5).map((bounty) => (
+                  <BountyRow key={bounty.issue_id} bounty={bounty} type="funded" />
+                ))
+              )}
+              {funded_bounties.length > 5 && (
+                <p className="text-center text-sm text-zinc-500">
+                  +{funded_bounties.length - 5} more
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -215,22 +217,24 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-zinc-100">Bounties You Won</h2>
           </div>
-          <div className="mt-4 space-y-3">
-            {won_bounties.length === 0 ? (
-              <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/40 p-8 text-center">
-                <p className="text-zinc-400">You haven&apos;t won any bounties yet</p>
-                <p className="mt-1 text-sm text-zinc-500">Submit a PR to start earning!</p>
-              </div>
-            ) : (
-              won_bounties.slice(0, 5).map((bounty) => (
-                <BountyRow key={bounty.issue_id} bounty={bounty} type="won" />
-              ))
-            )}
-            {won_bounties.length > 5 && (
-              <p className="text-center text-sm text-zinc-500">
-                +{won_bounties.length - 5} more
-              </p>
-            )}
+          <div className="overflow-x-auto">
+            <div className="mt-4 space-y-3">
+              {won_bounties.length === 0 ? (
+                <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/40 p-8 text-center">
+                  <p className="text-zinc-400">You haven&apos;t won any bounties yet</p>
+                  <p className="mt-1 text-sm text-zinc-500">Submit a PR to start earning!</p>
+                </div>
+              ) : (
+                won_bounties.slice(0, 5).map((bounty) => (
+                  <BountyRow key={bounty.issue_id} bounty={bounty} type="won" />
+                ))
+              )}
+              {won_bounties.length > 5 && (
+                <p className="text-center text-sm text-zinc-500">
+                  +{won_bounties.length - 5} more
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </div>
