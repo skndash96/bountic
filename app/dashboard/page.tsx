@@ -8,6 +8,7 @@ import { TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, type LucideIcon } fro
 import { fetchMe, type DashboardData } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { formatAmount, formatDateTime, getStatusColor } from "@/components/bounty/utils";
 
 function DashboardSkeleton() {
@@ -121,6 +122,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     fetchMe()
@@ -155,12 +157,34 @@ export default function DashboardPage() {
 
   const { user, funded_bounties, won_bounties, stats } = data;
 
+  const filteredFundedBounties = funded_bounties.filter(
+    (bounty) =>
+      bounty.owner.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      bounty.issue_title?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredWonBounties = won_bounties.filter(
+    (bounty) =>
+      bounty.owner.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      bounty.issue_title?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8">
       <div className="mb-8">
         <p className="text-xs uppercase tracking-[0.32em] text-emerald-300/80">Dashboard</p>
         <h1 className="mt-2 text-3xl font-semibold text-zinc-100">Welcome back{user.github_username ? `, @${user.github_username}` : ""}</h1>
         <p className="mt-1 text-sm text-zinc-400">{user.email}</p>
+      </div>
+
+      <div className="mb-8">
+        <Input
+          type="text"
+          placeholder="Search by Contributor GitHub Username or PR Title..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full"
+        />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -194,18 +218,18 @@ export default function DashboardPage() {
             <h2 className="text-lg font-semibold text-zinc-100">Bounties You Funded</h2>
           </div>
           <div className="mt-4 space-y-3">
-            {funded_bounties.length === 0 ? (
+            {filteredFundedBounties.length === 0 ? (
               <div className="rounded-xl min-h-28 border border-zinc-800/60 bg-zinc-900/40 p-8 text-center">
-                <p className="text-zinc-400">You haven&apos;t funded any bounties yet</p>
+                <p className="text-zinc-400">No funded bounties found</p>
               </div>
             ) : (
-              funded_bounties.slice(0, 5).map((bounty) => (
+              filteredFundedBounties.slice(0, 5).map((bounty) => (
                 <BountyRow key={bounty.issue_id} bounty={bounty} type="funded" />
               ))
             )}
-            {funded_bounties.length > 5 && (
+            {filteredFundedBounties.length > 5 && (
               <p className="text-center text-sm text-zinc-500">
-                +{funded_bounties.length - 5} more
+                +{filteredFundedBounties.length - 5} more
               </p>
             )}
           </div>
@@ -216,19 +240,19 @@ export default function DashboardPage() {
             <h2 className="text-lg font-semibold text-zinc-100">Bounties You Won</h2>
           </div>
           <div className="mt-4 space-y-3">
-            {won_bounties.length === 0 ? (
+            {filteredWonBounties.length === 0 ? (
               <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/40 p-8 text-center">
-                <p className="text-zinc-400">You haven&apos;t won any bounties yet</p>
+                <p className="text-zinc-400">No won bounties found</p>
                 <p className="mt-1 text-sm text-zinc-500">Submit a PR to start earning!</p>
               </div>
             ) : (
-              won_bounties.slice(0, 5).map((bounty) => (
+              filteredWonBounties.slice(0, 5).map((bounty) => (
                 <BountyRow key={bounty.issue_id} bounty={bounty} type="won" />
               ))
             )}
-            {won_bounties.length > 5 && (
+            {filteredWonBounties.length > 5 && (
               <p className="text-center text-sm text-zinc-500">
-                +{won_bounties.length - 5} more
+                +{filteredWonBounties.length - 5} more
               </p>
             )}
           </div>
