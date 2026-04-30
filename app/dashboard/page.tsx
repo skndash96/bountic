@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, type LucideIcon } from "lucide-react";
+import { TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, Download, type LucideIcon } from "lucide-react";
 
 import { fetchMe, type DashboardData } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
@@ -155,6 +155,19 @@ export default function DashboardPage() {
 
   const { user, funded_bounties, won_bounties, stats } = data;
 
+  const handleExportJson = (data: any[], filename: string) => {
+    const jsonString = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonString], { type: "application/json" });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(href);
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8">
       <div className="mb-8">
@@ -192,6 +205,16 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-zinc-100">Bounties You Funded</h2>
+            <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExportJson(funded_bounties, "funded_bounties.json")}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export JSON
+              </Button>
+            </div>
           </div>
           <div className="mt-4 space-y-3">
             {funded_bounties.length === 0 ? (
@@ -214,6 +237,16 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-zinc-100">Bounties You Won</h2>
+            <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExportJson(won_bounties, "won_bounties.json")}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export JSON
+              </Button>
+            </div>
           </div>
           <div className="mt-4 space-y-3">
             {won_bounties.length === 0 ? (
