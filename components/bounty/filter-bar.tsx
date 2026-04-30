@@ -35,10 +35,11 @@ export function FilterBar() {
   const updateParams = useCallback(
     (key: string, value: string) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (value === "all" || value === "newest") {
+      const trimmedValue = value.trim();
+      if (trimmedValue === "" || (key === "status" && trimmedValue === "all") || (key === "sort" && trimmedValue === "newest")) {
         params.delete(key);
       } else {
-        params.set(key, value);
+        params.set(key, trimmedValue);
       }
       router.push(`/explore?${params.toString()}`);
     },
