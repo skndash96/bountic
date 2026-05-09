@@ -57,8 +57,8 @@ export async function approveBountyPayout(params: {
     }
   }
 
-  // only single payout for now, later multiple payouts
-  const payoutResult = await resolveAndPayout({
+  // support multiple payouts
+  const payoutResults = await resolveAndPayout({
     owner: params.owner,
     repo: params.repo,
     issueNumber: params.issueNumber,
@@ -69,12 +69,14 @@ export async function approveBountyPayout(params: {
   });
 
   const now = new Date().toISOString();
+  // Use the first transaction hash for the main bounty record as a reference
+  const primaryTxHash = payoutResults.find(r => r.txHash)?.txHash ?? payoutResults[0].txHash;
 
   const { error: updateError } = await supabase
     .from("bounties")
     .update({
       status: "PAID",
-      payout_tx_hash: payoutResult.txHash,
+      payout_tx_hash: primaryTxHash,
       paid_at: now,
       approved_by: params.approvedBy,
     })
@@ -84,41 +86,43 @@ export async function approveBountyPayout(params: {
     throw new Error(`Failed to update bounty status to PAID: ${updateError.message}`);
   }
 
-  const { error: payoutEventError } = await supabase.from("payout_events").insert({
-    issue_id: issueId,
-    recipient_username: bounty.winning_pr_author,
-    amount: bounty.total_amount,
-    locus_transaction_id: payoutResult.transactionId,
-    transaction_hash: payoutResult.txHash,
-    status: "SUCCESS",
-    metadata: {
-      approved_by: params.approvedBy,
-      payout_source: "web",
-      payout_type: payoutResult.payoutType,
-      recipient_email: payoutResult.recipientEmail,
-      recipient_wallet: payoutResult.recipientWallet,
-    },
-  });
+  for (const res of payoutResults) {
+    const { error: payoutEventError } = await supabase.from("payout_events").insert({
+      issue_id: issueId,
+      recipient_username: res.recipientUsername,
+      amount: res.amount,
+      locus_transaction_id: res.transactionId,
+      transaction_hash: res.txHash,
+      status: "SUCCESS",
+      metadata: {
+        approved_by: params.approvedBy,
+        payout_source: "web",
+        payout_type: res.payoutType,
+        recipient_email: res.recipientEmail,
+        recipient_wallet: res.recipientWallet,
+      },
+    });
 
-  if (payoutEventError) {
-    throw new Error(`Failed to persist payout event: ${payoutEventError.message}`);
-  }
+    if (payoutEventError) {
+      console.error(`Failed to persist payout event for ${res.recipientUsername}:`, payoutEventError);
+    }
 
-  const { error: activityError } = await supabase.from("activity_events").insert({
-    issue_id: issueId,
-    event_type: "PAYOUT_SENT",
-    actor_username: bounty.winning_pr_author,
-    amount: bounty.total_amount,
-    tx_hash: payoutResult.txHash,
-    metadata: {
-      approved_by: params.approvedBy,
-      payout_source: "web",
-      payout_type: payoutResult.payoutType,
-    },
-  });
+    const { error: activityError } = await supabase.from("activity_events").insert({
+      issue_id: issueId,
+      event_type: "PAYOUT_SENT",
+      actor_username: res.recipientUsername,
+      amount: res.amount,
+      tx_hash: res.txHash,
+      metadata: {
+        approved_by: params.approvedBy,
+        payout_source: "web",
+        payout_type: res.payoutType,
+      },
+    });
 
-  if (activityError) {
-    throw new Error(`Failed to persist payout activity: ${activityError.message}`);
+    if (activityError) {
+      console.error(`Failed to persist payout activity for ${res.recipientUsername}:`, activityError);
+    }
   }
 
   await syncGithubBountyArtifacts(issueId);
@@ -126,12 +130,7 @@ export async function approveBountyPayout(params: {
   return {
     issueId,
     amount: bounty.total_amount,
-    recipient: bounty.winning_pr_author,
-    payoutType: payoutResult.payoutType,
-    recipientEmail: payoutResult.recipientEmail,
-    recipientWallet: payoutResult.recipientWallet,
-    txHash: payoutResult.txHash,
-    transactionId: payoutResult.transactionId,
+    results: payoutResults,
     approvedBy: params.approvedBy,
   };
 }
