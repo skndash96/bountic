@@ -93,7 +93,7 @@ export async function approveBountyPayout(params: {
       amount: res.amount,
       locus_transaction_id: res.transactionId,
       transaction_hash: res.txHash,
-      status: "SUCCESS",
+      status: res.status,
       metadata: {
         approved_by: params.approvedBy,
         payout_source: "web",
