@@ -29,7 +29,9 @@ export function ApproveButton({ owner, repo, issueNumber }: Props) {
         const results = response.payout.results;
         
         let messages = results.map(res => {
-          if (res.payoutType === "wallet" && res.recipientWallet) {
+          if (res.payoutType === "failed") {
+            return `@${res.recipientUsername}: Payout failed. (Requires manual retry)`;
+          } else if (res.payoutType === "wallet" && res.recipientWallet) {
             return `@${res.recipientUsername}: Sent to wallet ${res.recipientWallet.slice(0, 6)}...${res.recipientWallet.slice(-4)}`;
           } else if (res.payoutType === "email" && res.recipientEmail) {
             return `@${res.recipientUsername}: Sent to ${res.recipientEmail}`;
