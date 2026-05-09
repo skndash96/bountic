@@ -9,13 +9,14 @@ const BOUNTIC_ADDRESS_REGEX = /<!--\s*bountic-address:\s*(0x[a-fA-F0-9]{40})\s*-
 const BOUNTIC_SPLIT_REGEX = /<!--\s*bountic-split:\s*([^>]+?)\s*-->/i;
 
 export type PayoutResult = {
-  transactionId: string;
+  transactionId: string | null;
   txHash: string | null;
-  payoutType: "wallet" | "email" | "unclaimed";
+  payoutType: "wallet" | "email" | "unclaimed" | "failed";
   recipientEmail?: string | null;
   recipientWallet?: string | null;
   recipientUsername: string;
   amount: number;
+  status: "SUCCESS" | "FAILED";
 };
 
 function extractWalletFromPrBody(prBody: string | null): string | null {
@@ -110,6 +111,7 @@ export async function callLocusPayoutByEmail(params: {
       recipientEmail: params.toEmail,
       recipientUsername: params.recipientUsername,
       amount: params.amount,
+      status: "SUCCESS",
     };
   } catch (error) {
     console.error("Locus email payout failed:", error);
@@ -144,6 +146,7 @@ export async function callLocusPayoutByWallet(params: {
     recipientWallet: params.toAddress,
     recipientUsername: params.recipientUsername,
     amount: params.amount,
+    status: "SUCCESS",
   };
 }
 
@@ -175,6 +178,7 @@ Once connected, a maintainer can approve your payout and the funds will be sent 
     recipientEmail: null,
     recipientUsername: params.winningPrAuthor,
     amount: params.amount,
+    status: "SUCCESS",
   };
 }
 
@@ -218,29 +222,43 @@ export async function resolveAndPayout(params: {
     
     const recipientEmail = await getRecipientEmail(split.username);
 
-    if (walletFromPr) {
-      results.push(await callLocusPayoutByWallet({
-        toAddress: walletFromPr,
-        amount: recipientAmount,
-        memo: `Bountic payout for ${params.issueId}`,
+    try {
+      if (walletFromPr) {
+        results.push(await callLocusPayoutByWallet({
+          toAddress: walletFromPr,
+          amount: recipientAmount,
+          memo: `Bountic payout for ${params.issueId}`,
+          recipientUsername: split.username,
+        }));
+      } else if (recipientEmail) {
+        results.push(await callLocusPayoutByEmail({
+          toEmail: recipientEmail,
+          amount: recipientAmount,
+          memo: `Bountic payout for ${params.issueId}`,
+          recipientUsername: split.username,
+        }));
+      } else {
+        results.push(await handleUnclaimedPayout({
+          owner: params.owner,
+          repo: params.repo,
+          issueNumber: params.issueNumber,
+          winningPrAuthor: split.username,
+          amount: recipientAmount,
+          issueId: params.issueId,
+        }));
+      }
+    } catch (e) {
+      console.error(`Payout failed for ${split.username}:`, e);
+      results.push({
+        transactionId: null,
+        txHash: null,
+        payoutType: "failed",
+        recipientEmail: recipientEmail,
+        recipientWallet: walletFromPr,
         recipientUsername: split.username,
-      }));
-    } else if (recipientEmail) {
-      results.push(await callLocusPayoutByEmail({
-        toEmail: recipientEmail,
         amount: recipientAmount,
-        memo: `Bountic payout for ${params.issueId}`,
-        recipientUsername: split.username,
-      }));
-    } else {
-      results.push(await handleUnclaimedPayout({
-        owner: params.owner,
-        repo: params.repo,
-        issueNumber: params.issueNumber,
-        winningPrAuthor: split.username,
-        amount: recipientAmount,
-        issueId: params.issueId,
-      }));
+        status: "FAILED",
+      });
     }
   }
 
