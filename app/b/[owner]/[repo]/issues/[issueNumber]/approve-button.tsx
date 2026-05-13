@@ -26,10 +26,13 @@ export function ApproveButton({ owner, repo, issueNumber }: Props) {
     startTransition(async () => {
       try {
         const response = await approveBounty({ owner, repo, issueNumber });
-        const { payoutType, recipientEmail, recipientWallet } = response.payout;
-        
+        const payouts = response.payout.payouts ?? [response.payout];
+        const { payoutType, recipientEmail, recipientWallet } = payouts[0];
+
         let message = "";
-        if (payoutType === "wallet" && recipientWallet) {
+        if (payouts.length > 1) {
+          message = `Approved ${payouts.length} split payouts totaling $${response.payout.amount.toFixed(2)} USDC`;
+        } else if (payoutType === "wallet" && recipientWallet) {
           message = `Payout sent to wallet ${recipientWallet.slice(0, 6)}...${recipientWallet.slice(-4)}`;
         } else if (payoutType === "email" && recipientEmail) {
           message = `Payout sent to ${recipientEmail}`;
