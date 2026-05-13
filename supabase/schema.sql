@@ -117,6 +117,8 @@ create index if not exists activity_events_created_at_idx on public.activity_eve
 create index if not exists payout_events_issue_id_idx on public.payout_events(issue_id);
 create index if not exists payout_events_recipient_username_idx
   on public.payout_events(recipient_username);
+create unique index if not exists payout_events_issue_recipient_unique_idx
+  on public.payout_events(issue_id, lower(recipient_username));
 
 create table if not exists public.webhook_deliveries (
   id uuid primary key default gen_random_uuid(),
