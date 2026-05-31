@@ -6,6 +6,8 @@ import { getSupabaseServerEnv } from "@/lib/env/server";
 import { getGithubInstallationClient, getGithubRepoInstallationId } from "@/lib/clients/github/server";
 
 const BOUNTIC_ADDRESS_REGEX = /<!--\s*bountic-address:\s*(0x[a-fA-F0-9]{40})\s*-->/i;
+const BOUNTIC_NAMED_ADDRESS_REGEX =
+  /<!--\s*bountic-address:\s*@?([a-zA-Z0-9-]+)\s*(?:=|:)\s*(0x[a-fA-F0-9]{40})\s*-->/gi;
 
 export type PayoutResult = {
   transactionId: string;
@@ -15,8 +17,29 @@ export type PayoutResult = {
   recipientWallet?: string | null;
 };
 
-function extractWalletFromPrBody(prBody: string | null): string | null {
+export type RecipientPayoutResult = PayoutResult & {
+  recipientUsername: string;
+  amount: number;
+};
+
+function extractWalletFromPrBody(
+  prBody: string | null,
+  githubUsername: string,
+  allowGenericWallet: boolean,
+): string | null {
   if (!prBody) return null;
+
+  for (const match of prBody.matchAll(BOUNTIC_NAMED_ADDRESS_REGEX)) {
+    const [, matchedUsername, walletAddress] = match;
+    if (matchedUsername.toLowerCase() === githubUsername.toLowerCase()) {
+      return walletAddress;
+    }
+  }
+
+  if (!allowGenericWallet) {
+    return null;
+  }
+
   const match = BOUNTIC_ADDRESS_REGEX.exec(prBody);
   return match ? match[1] : null;
 }
@@ -145,8 +168,13 @@ export async function resolveAndPayout(params: {
   winningPrBody: string | null;
   amount: number;
   issueId: string;
+  allowGenericWallet?: boolean;
 }): Promise<PayoutResult> {
-  const walletFromPr = extractWalletFromPrBody(params.winningPrBody);
+  const walletFromPr = extractWalletFromPrBody(
+    params.winningPrBody,
+    params.winningPrAuthor,
+    params.allowGenericWallet ?? true,
+  );
   const recipientEmail = await getRecipientEmail(params.winningPrAuthor);
 
   if (walletFromPr) {
@@ -173,4 +201,40 @@ export async function resolveAndPayout(params: {
     amount: params.amount,
     issueId: params.issueId,
   });
+}
+
+export async function resolveAndPayoutMany(params: {
+  owner: string;
+  repo: string;
+  issueNumber: number;
+  issueId: string;
+  winningPrBody: string | null;
+  recipients: Array<{
+    username: string;
+    amount: number;
+  }>;
+}): Promise<RecipientPayoutResult[]> {
+  const allowGenericWallet = params.recipients.length === 1;
+  const payouts: RecipientPayoutResult[] = [];
+
+  for (const recipient of params.recipients) {
+    const payout = await resolveAndPayout({
+      owner: params.owner,
+      repo: params.repo,
+      issueNumber: params.issueNumber,
+      issueId: params.issueId,
+      winningPrAuthor: recipient.username,
+      winningPrBody: params.winningPrBody,
+      amount: recipient.amount,
+      allowGenericWallet,
+    });
+
+    payouts.push({
+      ...payout,
+      recipientUsername: recipient.username,
+      amount: recipient.amount,
+    });
+  }
+
+  return payouts;
 }

@@ -1,10 +1,66 @@
 import "server-only";
 
-import { resolveAndPayout } from "@/lib/bounty/services/payout";
+import { resolveAndPayoutMany } from "@/lib/bounty/services/payout";
 import { syncGithubBountyArtifacts } from "@/lib/bounty/services/github-sync";
 import { getSupabaseServiceClient } from "@/lib/clients/supabase/server";
 import { getGithubInstallationClient, getGithubRepoInstallationId } from "@/lib/clients/github/server";
 import { buildIssueId } from "@/lib/bounty/issue-id";
+
+type GithubInstallationClient = Awaited<ReturnType<typeof getGithubInstallationClient>>;
+
+function splitAmountEvenly(amount: number, recipientUsernames: string[]) {
+  const totalCents = Math.round(amount * 100);
+  const baseCents = Math.floor(totalCents / recipientUsernames.length);
+  let remainderCents = totalCents - baseCents * recipientUsernames.length;
+
+  return recipientUsernames.map((username) => {
+    const cents = baseCents + (remainderCents > 0 ? 1 : 0);
+    remainderCents -= 1;
+
+    return {
+      username,
+      amount: cents / 100,
+    };
+  });
+}
+
+async function getMergedPrPayoutContext(params: {
+  github: GithubInstallationClient;
+  owner: string;
+  repo: string;
+  pullNumber: number;
+  fallbackAuthor: string;
+}) {
+  const prResponse = await params.github.rest.pulls.get({
+    owner: params.owner,
+    repo: params.repo,
+    pull_number: params.pullNumber,
+  });
+
+  const commits = await params.github.paginate(params.github.rest.pulls.listCommits, {
+    owner: params.owner,
+    repo: params.repo,
+    pull_number: params.pullNumber,
+    per_page: 100,
+  });
+
+  const contributors = new Set<string>();
+  for (const commit of commits) {
+    const login = commit.author?.login;
+    if (login) {
+      contributors.add(login);
+    }
+  }
+
+  if (contributors.size === 0) {
+    contributors.add(params.fallbackAuthor);
+  }
+
+  return {
+    body: prResponse.data.body ?? null,
+    contributors: [...contributors],
+  };
+}
 
 export async function approveBountyPayout(params: {
   owner: string;
@@ -42,31 +98,40 @@ export async function approveBountyPayout(params: {
   }
 
   let winningPrBody: string | null = null;
+  let payoutRecipients = splitAmountEvenly(bounty.total_amount, [bounty.winning_pr_author]);
+
   if (bounty.winning_pr_number) {
     try {
       const installationId = await getGithubRepoInstallationId(params.owner, params.repo);
       const github = await getGithubInstallationClient(installationId);
-      const prResponse = await github.rest.pulls.get({
+      const prContext = await getMergedPrPayoutContext({
+        github,
         owner: params.owner,
         repo: params.repo,
-        pull_number: bounty.winning_pr_number,
+        pullNumber: bounty.winning_pr_number,
+        fallbackAuthor: bounty.winning_pr_author,
       });
-      winningPrBody = prResponse.data.body ?? null;
+      winningPrBody = prContext.body;
+      payoutRecipients = splitAmountEvenly(bounty.total_amount, prContext.contributors);
     } catch (err) {
-      console.warn("Failed to fetch PR body for wallet extraction:", err);
+      console.warn("Failed to fetch PR payout context; falling back to PR author:", err);
     }
   }
 
-  // only single payout for now, later multiple payouts
-  const payoutResult = await resolveAndPayout({
+  const payoutResults = await resolveAndPayoutMany({
     owner: params.owner,
     repo: params.repo,
     issueNumber: params.issueNumber,
-    winningPrAuthor: bounty.winning_pr_author,
     winningPrBody,
-    amount: bounty.total_amount,
+    recipients: payoutRecipients,
     issueId,
   });
+  if (payoutResults.length === 0) {
+    throw new Error("No payout recipients were resolved");
+  }
+
+  const payoutTxHashes = payoutResults.map((payout) => payout.txHash).filter((txHash): txHash is string => Boolean(txHash));
+  const primaryPayout = payoutResults[0];
 
   const now = new Date().toISOString();
 
@@ -74,7 +139,7 @@ export async function approveBountyPayout(params: {
     .from("bounties")
     .update({
       status: "PAID",
-      payout_tx_hash: payoutResult.txHash,
+      payout_tx_hash: payoutTxHashes[0] ?? null,
       paid_at: now,
       approved_by: params.approvedBy,
     })
@@ -84,21 +149,24 @@ export async function approveBountyPayout(params: {
     throw new Error(`Failed to update bounty status to PAID: ${updateError.message}`);
   }
 
-  const { error: payoutEventError } = await supabase.from("payout_events").insert({
-    issue_id: issueId,
-    recipient_username: bounty.winning_pr_author,
-    amount: bounty.total_amount,
-    locus_transaction_id: payoutResult.transactionId,
-    transaction_hash: payoutResult.txHash,
-    status: "SUCCESS",
-    metadata: {
-      approved_by: params.approvedBy,
-      payout_source: "web",
-      payout_type: payoutResult.payoutType,
-      recipient_email: payoutResult.recipientEmail,
-      recipient_wallet: payoutResult.recipientWallet,
-    },
-  });
+  const { error: payoutEventError } = await supabase.from("payout_events").insert(
+    payoutResults.map((payout) => ({
+      issue_id: issueId,
+      recipient_username: payout.recipientUsername,
+      amount: payout.amount,
+      locus_transaction_id: payout.transactionId,
+      transaction_hash: payout.txHash,
+      status: "SUCCESS" as const,
+      metadata: {
+        approved_by: params.approvedBy,
+        payout_source: "web",
+        payout_type: payout.payoutType,
+        recipient_email: payout.recipientEmail,
+        recipient_wallet: payout.recipientWallet,
+        split_count: payoutResults.length,
+      },
+    })),
+  );
 
   if (payoutEventError) {
     throw new Error(`Failed to persist payout event: ${payoutEventError.message}`);
@@ -107,13 +175,22 @@ export async function approveBountyPayout(params: {
   const { error: activityError } = await supabase.from("activity_events").insert({
     issue_id: issueId,
     event_type: "PAYOUT_SENT",
-    actor_username: bounty.winning_pr_author,
+    actor_username: params.approvedBy,
     amount: bounty.total_amount,
-    tx_hash: payoutResult.txHash,
+    tx_hash: payoutTxHashes[0] ?? null,
     metadata: {
       approved_by: params.approvedBy,
       payout_source: "web",
-      payout_type: payoutResult.payoutType,
+      payout_type: payoutResults.length === 1 ? primaryPayout.payoutType : "split",
+      payouts: payoutResults.map((payout) => ({
+        recipient: payout.recipientUsername,
+        amount: payout.amount,
+        payout_type: payout.payoutType,
+        recipient_email: payout.recipientEmail,
+        recipient_wallet: payout.recipientWallet,
+        tx_hash: payout.txHash,
+        transaction_id: payout.transactionId,
+      })),
     },
   });
 
@@ -126,12 +203,13 @@ export async function approveBountyPayout(params: {
   return {
     issueId,
     amount: bounty.total_amount,
-    recipient: bounty.winning_pr_author,
-    payoutType: payoutResult.payoutType,
-    recipientEmail: payoutResult.recipientEmail,
-    recipientWallet: payoutResult.recipientWallet,
-    txHash: payoutResult.txHash,
-    transactionId: payoutResult.transactionId,
+    recipient: payoutResults.length === 1 ? primaryPayout.recipientUsername : `${payoutResults.length} contributors`,
+    payoutType: payoutResults.length === 1 ? primaryPayout.payoutType : "split",
+    recipientEmail: payoutResults.length === 1 ? primaryPayout.recipientEmail : null,
+    recipientWallet: payoutResults.length === 1 ? primaryPayout.recipientWallet : null,
+    txHash: payoutTxHashes[0] ?? null,
+    transactionId: payoutResults.length === 1 ? primaryPayout.transactionId : `split_${Date.now()}`,
+    payouts: payoutResults,
     approvedBy: params.approvedBy,
   };
 }

@@ -154,11 +154,22 @@ Response:
     "issueId": "owner/repo#123",
     "amount": 0,
     "recipient": "...",
-    "payoutType": "wallet|email|unclaimed",
+    "payoutType": "wallet|email|unclaimed|split",
     "recipientEmail": null,
     "recipientWallet": null,
     "txHash": null,
     "transactionId": "...",
+    "payouts": [
+      {
+        "recipientUsername": "contributor",
+        "amount": 0,
+        "payoutType": "wallet|email|unclaimed",
+        "recipientEmail": null,
+        "recipientWallet": null,
+        "txHash": null,
+        "transactionId": "..."
+      }
+    ],
     "approvedBy": "github_username"
   }
 }
@@ -211,7 +222,14 @@ Body:
 <!-- bountic-address: 0xYOURWALLET -->
 ```
 
-The tag must be present in the PR body exactly once. It should be parseable via regex.
+The generic tag is used only when a merged PR has one payout recipient.
+
+- Named wallet payout tags for multi-contributor PRs:
+```
+<!-- bountic-address: github-username=0xYOURWALLET -->
+```
+
+When a merged PR includes commits from multiple GitHub users, Bountic splits the bounty evenly across the unique commit authors. Named tags let each contributor provide a separate wallet address.
 
 ## State Rules
 
