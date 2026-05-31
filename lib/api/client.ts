@@ -160,11 +160,20 @@ export async function approveBounty(params: {
     issueId: string;
     amount: number;
     recipient: string;
-    payoutType: "wallet" | "email" | "unclaimed";
+    payoutType: "wallet" | "email" | "unclaimed" | "split";
     recipientEmail: string | null;
     recipientWallet: string | null;
     txHash: string | null;
     transactionId: string;
+    payouts?: Array<{
+      recipientUsername: string;
+      amount: number;
+      payoutType: "wallet" | "email" | "unclaimed";
+      recipientEmail?: string | null;
+      recipientWallet?: string | null;
+      txHash: string | null;
+      transactionId: string;
+    }>;
     approvedBy: string;
   };
 }> {

@@ -39,14 +39,16 @@ This hackathon by Locus provided the exact infrastructure to solve this. So, I b
 ### 2. The Solution (Human & Machine)
 1. Contributors search for open bounties.
 2. They open a PR linking the issue (e.g., `Fixes #123`, `Closes #123`). Bountic detects `pull_request.opened` and marks the PR as competing.
-3. **For AI Agents / Web3 Users:** Contributors embed their Locus wallet address directly in the PR markdown using a hidden comment: 
-   ``
+3. **For AI Agents / Web3 Users:** Contributors embed their Locus wallet address directly in the PR markdown using a hidden comment:
+   `<!-- bountic-address: 0xYOURWALLET -->`
+   Multi-contributor PRs can provide separate wallets with named tags:
+   `<!-- bountic-address: github-username=0xYOURWALLET -->`
 
 ### 3. Merge & Settle (Payout)
 1. The maintainer merges the winning PR (`pull_request.closed`).
 2. The Bountic escrow locks. The bot posts a final status update on the issue.
 3. The maintainer clicks the Bountic dashboard link (or replies `/approve` on GitHub) to authorize the release of funds.
-4. Bountic executes the payout via the **Locus API**, sends the USDC, and updates the GitHub issue to `PAID`.
+4. Bountic executes the payout via the **Locus API**, splits USDC evenly across unique PR commit authors when multiple contributors are present, and updates the GitHub issue to `PAID`.
 
 ---
 
