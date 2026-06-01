@@ -42,6 +42,7 @@ export async function approveBountyPayout(params: {
   }
 
   let winningPrBody: string | null = null;
+  let winningPrCommitAuthors: string[] = [];
   if (bounty.winning_pr_number) {
     try {
       const installationId = await getGithubRepoInstallationId(params.owner, params.repo);
@@ -52,18 +53,29 @@ export async function approveBountyPayout(params: {
         pull_number: bounty.winning_pr_number,
       });
       winningPrBody = prResponse.data.body ?? null;
+
+      const commitsResponse = await github.rest.pulls.listCommits({
+        owner: params.owner,
+        repo: params.repo,
+        pull_number: bounty.winning_pr_number,
+        per_page: 100,
+      });
+
+      winningPrCommitAuthors = commitsResponse.data
+        .map((commit) => commit.author?.login)
+        .filter((login): login is string => typeof login === "string" && login.length > 0);
     } catch (err) {
-      console.warn("Failed to fetch PR body for wallet extraction:", err);
+      console.warn("Failed to fetch PR details for payout resolution:", err);
     }
   }
 
-  // only single payout for now, later multiple payouts
   const payoutResult = await resolveAndPayout({
     owner: params.owner,
     repo: params.repo,
     issueNumber: params.issueNumber,
     winningPrAuthor: bounty.winning_pr_author,
     winningPrBody,
+    winningPrCommitAuthors,
     amount: bounty.total_amount,
     issueId,
   });
@@ -84,38 +96,42 @@ export async function approveBountyPayout(params: {
     throw new Error(`Failed to update bounty status to PAID: ${updateError.message}`);
   }
 
-  const { error: payoutEventError } = await supabase.from("payout_events").insert({
-    issue_id: issueId,
-    recipient_username: bounty.winning_pr_author,
-    amount: bounty.total_amount,
-    locus_transaction_id: payoutResult.transactionId,
-    transaction_hash: payoutResult.txHash,
-    status: "SUCCESS",
-    metadata: {
-      approved_by: params.approvedBy,
-      payout_source: "web",
-      payout_type: payoutResult.payoutType,
-      recipient_email: payoutResult.recipientEmail,
-      recipient_wallet: payoutResult.recipientWallet,
-    },
-  });
+  const { error: payoutEventError } = await supabase.from("payout_events").insert(
+    payoutResult.recipients.map((recipient) => ({
+      issue_id: issueId,
+      recipient_username: recipient.recipientUsername,
+      amount: recipient.amount,
+      locus_transaction_id: recipient.transactionId,
+      transaction_hash: recipient.txHash,
+      status: "SUCCESS" as const,
+      metadata: {
+        approved_by: params.approvedBy,
+        payout_source: "web",
+        payout_type: recipient.payoutType,
+        recipient_email: recipient.recipientEmail,
+        recipient_wallet: recipient.recipientWallet,
+      },
+    })),
+  );
 
   if (payoutEventError) {
     throw new Error(`Failed to persist payout event: ${payoutEventError.message}`);
   }
 
-  const { error: activityError } = await supabase.from("activity_events").insert({
-    issue_id: issueId,
-    event_type: "PAYOUT_SENT",
-    actor_username: bounty.winning_pr_author,
-    amount: bounty.total_amount,
-    tx_hash: payoutResult.txHash,
-    metadata: {
-      approved_by: params.approvedBy,
-      payout_source: "web",
-      payout_type: payoutResult.payoutType,
-    },
-  });
+  const { error: activityError } = await supabase.from("activity_events").insert(
+    payoutResult.recipients.map((recipient) => ({
+      issue_id: issueId,
+      event_type: "PAYOUT_SENT" as const,
+      actor_username: recipient.recipientUsername,
+      amount: recipient.amount,
+      tx_hash: recipient.txHash,
+      metadata: {
+        approved_by: params.approvedBy,
+        payout_source: "web",
+        payout_type: recipient.payoutType,
+      },
+    })),
+  );
 
   if (activityError) {
     throw new Error(`Failed to persist payout activity: ${activityError.message}`);
@@ -132,6 +148,7 @@ export async function approveBountyPayout(params: {
     recipientWallet: payoutResult.recipientWallet,
     txHash: payoutResult.txHash,
     transactionId: payoutResult.transactionId,
+    payouts: payoutResult.recipients,
     approvedBy: params.approvedBy,
   };
 }

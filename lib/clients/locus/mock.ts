@@ -52,7 +52,7 @@ export function getMockLocusClient(): LocusClient {
         return payload as T;
       }
 
-      if (normalized === "/pay/send" && options.method === "POST") {
+      if ((normalized === "/pay/send" || normalized === "/pay/send-email") && options.method === "POST") {
         const transactionId = randomId("tx");
         const payload: PayoutPayload = {
           transaction_id: transactionId,
