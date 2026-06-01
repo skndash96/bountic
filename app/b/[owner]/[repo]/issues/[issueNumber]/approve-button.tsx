@@ -29,7 +29,9 @@ export function ApproveButton({ owner, repo, issueNumber }: Props) {
         const { payoutType, recipientEmail, recipientWallet } = response.payout;
         
         let message = "";
-        if (payoutType === "wallet" && recipientWallet) {
+        if (response.payout.payouts && response.payout.payouts.length > 1) {
+          message = `Payout split sent to ${response.payout.payouts.length} recipients`;
+        } else if (payoutType === "wallet" && recipientWallet) {
           message = `Payout sent to wallet ${recipientWallet.slice(0, 6)}...${recipientWallet.slice(-4)}`;
         } else if (payoutType === "email" && recipientEmail) {
           message = `Payout sent to ${recipientEmail}`;

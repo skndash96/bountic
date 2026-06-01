@@ -6,6 +6,9 @@ import { getSupabaseServerEnv } from "@/lib/env/server";
 import { getGithubInstallationClient, getGithubRepoInstallationId } from "@/lib/clients/github/server";
 
 const BOUNTIC_ADDRESS_REGEX = /<!--\s*bountic-address:\s*(0x[a-fA-F0-9]{40})\s*-->/i;
+const BOUNTIC_SPLIT_BLOCK_REGEX = /<!--\s*bountic-split:\s*([\s\S]*?)-->/i;
+const SPLIT_ENTRY_REGEX = /^@?([a-zA-Z0-9-]+)\s*(?::|=|\s)\s*(\d+(?:\.\d+)?)(%)?(?:\s+(0x[a-fA-F0-9]{40}))?$/;
+const AMOUNT_EPSILON = 0.01;
 
 export type PayoutResult = {
   transactionId: string;
@@ -15,10 +18,85 @@ export type PayoutResult = {
   recipientWallet?: string | null;
 };
 
-function extractWalletFromPrBody(prBody: string | null): string | null {
+export type PayoutRecipient = {
+  username: string;
+  amount: number;
+  wallet?: string | null;
+};
+
+export function extractWalletFromPrBody(prBody: string | null): string | null {
   if (!prBody) return null;
   const match = BOUNTIC_ADDRESS_REGEX.exec(prBody);
   return match ? match[1] : null;
+}
+
+export function extractPayoutRecipientsFromPrBody(params: {
+  prBody: string | null;
+  fallbackUsername: string;
+  totalAmount: number;
+}): PayoutRecipient[] {
+  const fallbackRecipient = [{ username: params.fallbackUsername, amount: params.totalAmount }];
+  if (!params.prBody) return fallbackRecipient;
+
+  const blockMatch = BOUNTIC_SPLIT_BLOCK_REGEX.exec(params.prBody);
+  if (!blockMatch) return fallbackRecipient;
+
+  const rawEntries = blockMatch[1]
+    .split(/[\n,;]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  if (rawEntries.length === 0) {
+    throw new Error("bountic-split block must include at least one recipient");
+  }
+
+  const parsedEntries = rawEntries.map((entry) => {
+    const match = SPLIT_ENTRY_REGEX.exec(entry);
+    if (!match) {
+      throw new Error(
+        `Invalid bountic-split entry "${entry}". Use "@username 50%" or "@username 5.00 0xwallet".`,
+      );
+    }
+
+    return {
+      username: match[1],
+      value: Number(match[2]),
+      isPercent: !!match[3],
+      wallet: match[4] ?? null,
+    };
+  });
+
+  const hasPercentEntries = parsedEntries.some((entry) => entry.isPercent);
+  const hasAmountEntries = parsedEntries.some((entry) => !entry.isPercent);
+  if (hasPercentEntries && hasAmountEntries) {
+    throw new Error("bountic-split cannot mix percentages and fixed amounts");
+  }
+
+  if (hasPercentEntries) {
+    const totalPercent = parsedEntries.reduce((sum, entry) => sum + entry.value, 0);
+    if (Math.abs(totalPercent - 100) > AMOUNT_EPSILON) {
+      throw new Error(`bountic-split percentages must total 100, got ${totalPercent}`);
+    }
+
+    return parsedEntries.map((entry) => ({
+      username: entry.username,
+      amount: Number(((params.totalAmount * entry.value) / 100).toFixed(2)),
+      wallet: entry.wallet,
+    }));
+  }
+
+  const totalSplitAmount = parsedEntries.reduce((sum, entry) => sum + entry.value, 0);
+  if (Math.abs(totalSplitAmount - params.totalAmount) > AMOUNT_EPSILON) {
+    throw new Error(
+      `bountic-split fixed amounts must total ${params.totalAmount.toFixed(2)}, got ${totalSplitAmount.toFixed(2)}`,
+    );
+  }
+
+  return parsedEntries.map((entry) => ({
+    username: entry.username,
+    amount: Number(entry.value.toFixed(2)),
+    wallet: entry.wallet,
+  }));
 }
 
 async function getRecipientEmail(githubUsername: string): Promise<string | null> {
@@ -145,8 +223,11 @@ export async function resolveAndPayout(params: {
   winningPrBody: string | null;
   amount: number;
   issueId: string;
+  recipientWallet?: string | null;
+  usePrBodyWallet?: boolean;
 }): Promise<PayoutResult> {
-  const walletFromPr = extractWalletFromPrBody(params.winningPrBody);
+  const walletFromPr =
+    params.recipientWallet ?? (params.usePrBodyWallet === false ? null : extractWalletFromPrBody(params.winningPrBody));
   const recipientEmail = await getRecipientEmail(params.winningPrAuthor);
 
   if (walletFromPr) {
