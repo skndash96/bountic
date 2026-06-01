@@ -93,6 +93,16 @@ export type FundResponse = {
   checkout_url: string;
 };
 
+export type PayoutRecipient = {
+  recipientUsername: string;
+  amount: number;
+  transactionId: string;
+  txHash: string | null;
+  payoutType: "wallet" | "email" | "unclaimed";
+  recipientEmail?: string | null;
+  recipientWallet?: string | null;
+};
+
 export async function fetchBounties(params: {
   status?: string;
   min_amount?: number;
@@ -160,11 +170,12 @@ export async function approveBounty(params: {
     issueId: string;
     amount: number;
     recipient: string;
-    payoutType: "wallet" | "email" | "unclaimed";
+    payoutType: "wallet" | "email" | "unclaimed" | "split";
     recipientEmail: string | null;
     recipientWallet: string | null;
     txHash: string | null;
     transactionId: string;
+    payouts?: PayoutRecipient[];
     approvedBy: string;
   };
 }> {

@@ -154,11 +154,22 @@ Response:
     "issueId": "owner/repo#123",
     "amount": 0,
     "recipient": "...",
-    "payoutType": "wallet|email|unclaimed",
+    "payoutType": "wallet|email|unclaimed|split",
     "recipientEmail": null,
     "recipientWallet": null,
     "txHash": null,
     "transactionId": "...",
+    "payouts": [
+      {
+        "recipientUsername": "alice",
+        "amount": 0,
+        "payoutType": "wallet|email|unclaimed",
+        "recipientEmail": null,
+        "recipientWallet": null,
+        "txHash": null,
+        "transactionId": "..."
+      }
+    ],
     "approvedBy": "github_username"
   }
 }
@@ -211,7 +222,23 @@ Body:
 <!-- bountic-address: 0xYOURWALLET -->
 ```
 
-The tag must be present in the PR body exactly once. It should be parseable via regex.
+Use this tag for single-recipient wallet payouts.
+
+- Per-recipient wallet payout tags:
+```
+<!-- bountic-recipient: @alice 0xALICEWALLET -->
+<!-- bountic-recipient: @bob 0xBOBWALLET -->
+```
+
+- Optional explicit split weights:
+```
+<!-- bountic-split:
+@alice: 70
+@bob: 30
+-->
+```
+
+If no explicit split is provided, Bountic splits the payout by GitHub commit-author attribution on the merged PR. If an explicit split is provided, weights may be percentages or simple relative weights and are rounded to cents.
 
 ## State Rules
 

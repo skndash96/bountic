@@ -128,5 +128,6 @@ Goal: give logged-in users a reason to log in beyond payout eligibility.
    - Default payout is email-based via linked user email.
    - Agent tag `bountic-address` enables wallet-native payout path.
 
-2. Future split suggestion (not in scope now)
-   - TODO: use an LLM to suggest a payout split based on diff/commit attribution.
+2. Payout split suggestion
+   - Merged PRs can now split payouts by explicit `bountic-split` weights or by commit-author attribution when no explicit split is provided.
+   - Future improvement: use an LLM to propose a maintainer-editable split based on diff/commit attribution.

@@ -13,6 +13,24 @@ type Props = {
   issueNumber: number;
 };
 
+function formatPayoutRecipient(recipient: {
+  recipientUsername: string;
+  amount: number;
+  payoutType: "wallet" | "email" | "unclaimed";
+  recipientEmail?: string | null;
+  recipientWallet?: string | null;
+}) {
+  if (recipient.payoutType === "wallet" && recipient.recipientWallet) {
+    return `@${recipient.recipientUsername}: $${recipient.amount.toFixed(2)} to ${recipient.recipientWallet.slice(0, 6)}...${recipient.recipientWallet.slice(-4)}`;
+  }
+
+  if (recipient.payoutType === "email" && recipient.recipientEmail) {
+    return `@${recipient.recipientUsername}: $${recipient.amount.toFixed(2)} to ${recipient.recipientEmail}`;
+  }
+
+  return `@${recipient.recipientUsername}: $${recipient.amount.toFixed(2)} unclaimed`;
+}
+
 export function ApproveButton({ owner, repo, issueNumber }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -26,10 +44,12 @@ export function ApproveButton({ owner, repo, issueNumber }: Props) {
     startTransition(async () => {
       try {
         const response = await approveBounty({ owner, repo, issueNumber });
-        const { payoutType, recipientEmail, recipientWallet } = response.payout;
+        const { payoutType, recipientEmail, recipientWallet, payouts } = response.payout;
         
         let message = "";
-        if (payoutType === "wallet" && recipientWallet) {
+        if (payoutType === "split" && payouts?.length) {
+          message = `Split payout approved: ${payouts.map(formatPayoutRecipient).join("; ")}`;
+        } else if (payoutType === "wallet" && recipientWallet) {
           message = `Payout sent to wallet ${recipientWallet.slice(0, 6)}...${recipientWallet.slice(-4)}`;
         } else if (payoutType === "email" && recipientEmail) {
           message = `Payout sent to ${recipientEmail}`;
