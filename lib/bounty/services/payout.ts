@@ -6,19 +6,121 @@ import { getSupabaseServerEnv } from "@/lib/env/server";
 import { getGithubInstallationClient, getGithubRepoInstallationId } from "@/lib/clients/github/server";
 
 const BOUNTIC_ADDRESS_REGEX = /<!--\s*bountic-address:\s*(0x[a-fA-F0-9]{40})\s*-->/i;
+const BOUNTIC_SPLIT_REGEX = /<!--\s*bountic-split:\s*([\s\S]*?)-->/i;
+const SPLIT_LINE_REGEX = /^@?([a-zA-Z0-9-]+)\s+(\d+(?:\.\d+)?)(%)?(?:\s+(0x[a-fA-F0-9]{40}))?$/;
 
 export type PayoutResult = {
   transactionId: string;
   txHash: string | null;
   payoutType: "wallet" | "email" | "unclaimed";
+  recipientUsername: string;
+  amount: number;
   recipientEmail?: string | null;
   recipientWallet?: string | null;
+};
+
+export type SplitPayoutResult = {
+  results: PayoutResult[];
+  totalAmount: number;
+  isSplit: boolean;
+};
+
+type ParsedPayoutRecipient = {
+  username: string;
+  amount: number;
+  wallet: string | null;
+};
+
+type ParsedSplitLine = {
+  username: string;
+  value: number;
+  isPercent: boolean;
+  wallet: string | null;
 };
 
 function extractWalletFromPrBody(prBody: string | null): string | null {
   if (!prBody) return null;
   const match = BOUNTIC_ADDRESS_REGEX.exec(prBody);
   return match ? match[1] : null;
+}
+
+function roundCurrency(amount: number): number {
+  return Math.round(amount * 100) / 100;
+}
+
+function parseSplitLines(prBody: string | null): ParsedSplitLine[] {
+  if (!prBody) return [];
+
+  const blockMatch = BOUNTIC_SPLIT_REGEX.exec(prBody);
+  if (!blockMatch) return [];
+
+  const splitLines = blockMatch[1]
+    .split("\n")
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith("#"));
+
+  return splitLines.map(line => {
+    const match = SPLIT_LINE_REGEX.exec(line);
+    if (!match) {
+      throw new Error(`Invalid bountic-split line: "${line}"`);
+    }
+
+    return {
+      username: match[1],
+      value: Number(match[2]),
+      isPercent: Boolean(match[3]),
+      wallet: match[4] ?? null,
+    };
+  });
+}
+
+function resolveSplitRecipients(prBody: string | null, totalAmount: number): ParsedPayoutRecipient[] {
+  const splitLines = parseSplitLines(prBody);
+  if (splitLines.length === 0) return [];
+
+  const hasPercent = splitLines.some(line => line.isPercent);
+  const hasFixedAmount = splitLines.some(line => !line.isPercent);
+
+  if (hasPercent && hasFixedAmount) {
+    throw new Error("bountic-split cannot mix percentages and fixed USDC amounts");
+  }
+
+  if (new Set(splitLines.map(line => line.username.toLowerCase())).size !== splitLines.length) {
+    throw new Error("bountic-split contains duplicate recipients");
+  }
+
+  if (hasPercent) {
+    const percentTotal = splitLines.reduce((sum, line) => sum + line.value, 0);
+    if (Math.abs(percentTotal - 100) > 0.001) {
+      throw new Error("bountic-split percentages must total 100%");
+    }
+
+    let distributedAmount = 0;
+    return splitLines.map((line, index) => {
+      const isLast = index === splitLines.length - 1;
+      const amount = isLast
+        ? roundCurrency(totalAmount - distributedAmount)
+        : roundCurrency((totalAmount * line.value) / 100);
+      distributedAmount += amount;
+
+      return {
+        username: line.username,
+        amount,
+        wallet: line.wallet,
+      };
+    });
+  }
+
+  const amountTotal = roundCurrency(splitLines.reduce((sum, line) => sum + line.value, 0));
+  if (Math.abs(amountTotal - roundCurrency(totalAmount)) > 0.001) {
+    throw new Error("bountic-split fixed amounts must total the bounty amount");
+  }
+
+  return splitLines.map(line => ({
+    username: line.username,
+    amount: roundCurrency(line.value),
+    wallet: line.wallet,
+  }));
 }
 
 async function getRecipientEmail(githubUsername: string): Promise<string | null> {
@@ -49,6 +151,7 @@ async function commentOnIssue(params: {
 }
 
 export async function callLocusPayoutByEmail(params: {
+  recipientUsername: string;
   toEmail: string;
   amount: number;
   memo: string;
@@ -73,6 +176,8 @@ export async function callLocusPayoutByEmail(params: {
       transactionId: payload.transaction_id,
       txHash: payload.tx_hash ?? null,
       payoutType: "email",
+      recipientUsername: params.recipientUsername,
+      amount: params.amount,
       recipientEmail: params.toEmail,
     };
   } catch (error) {
@@ -82,6 +187,7 @@ export async function callLocusPayoutByEmail(params: {
 }
 
 export async function callLocusPayoutByWallet(params: {
+  recipientUsername: string;
   toAddress: string;
   amount: number;
   memo: string;
@@ -104,6 +210,8 @@ export async function callLocusPayoutByWallet(params: {
     transactionId: payload.transaction_id,
     txHash: payload.tx_hash ?? null,
     payoutType: "wallet",
+    recipientUsername: params.recipientUsername,
+    amount: params.amount,
     recipientWallet: params.toAddress,
   };
 }
@@ -133,25 +241,27 @@ Once connected, a maintainer can approve your payout and the funds will be sent 
     transactionId: `unclaimed_${Date.now()}`,
     txHash: null,
     payoutType: "unclaimed",
+    recipientUsername: params.winningPrAuthor,
+    amount: params.amount,
     recipientEmail: null,
   };
 }
 
-export async function resolveAndPayout(params: {
+async function payoutRecipient(params: {
   owner: string;
   repo: string;
   issueNumber: number;
-  winningPrAuthor: string;
-  winningPrBody: string | null;
+  username: string;
+  wallet: string | null;
   amount: number;
   issueId: string;
 }): Promise<PayoutResult> {
-  const walletFromPr = extractWalletFromPrBody(params.winningPrBody);
-  const recipientEmail = await getRecipientEmail(params.winningPrAuthor);
+  const recipientEmail = await getRecipientEmail(params.username);
 
-  if (walletFromPr) {
+  if (params.wallet) {
     return callLocusPayoutByWallet({
-      toAddress: walletFromPr,
+      recipientUsername: params.username,
+      toAddress: params.wallet,
       amount: params.amount,
       memo: `Bountic payout for ${params.issueId}`,
     });
@@ -159,6 +269,7 @@ export async function resolveAndPayout(params: {
 
   if (recipientEmail) {
     return callLocusPayoutByEmail({
+      recipientUsername: params.username,
       toEmail: recipientEmail,
       amount: params.amount,
       memo: `Bountic payout for ${params.issueId}`,
@@ -169,8 +280,59 @@ export async function resolveAndPayout(params: {
     owner: params.owner,
     repo: params.repo,
     issueNumber: params.issueNumber,
-    winningPrAuthor: params.winningPrAuthor,
+    winningPrAuthor: params.username,
     amount: params.amount,
     issueId: params.issueId,
   });
+}
+
+export async function resolveAndPayout(params: {
+  owner: string;
+  repo: string;
+  issueNumber: number;
+  winningPrAuthor: string;
+  winningPrBody: string | null;
+  amount: number;
+  issueId: string;
+}): Promise<SplitPayoutResult> {
+  const splitRecipients = resolveSplitRecipients(params.winningPrBody, params.amount);
+
+  if (splitRecipients.length > 0) {
+    const results: PayoutResult[] = [];
+
+    for (const recipient of splitRecipients) {
+      results.push(await payoutRecipient({
+        owner: params.owner,
+        repo: params.repo,
+        issueNumber: params.issueNumber,
+        username: recipient.username,
+        wallet: recipient.wallet,
+        amount: recipient.amount,
+        issueId: params.issueId,
+      }));
+    }
+
+    return {
+      results,
+      totalAmount: params.amount,
+      isSplit: true,
+    };
+  }
+
+  const walletFromPr = extractWalletFromPrBody(params.winningPrBody);
+  const result = await payoutRecipient({
+    owner: params.owner,
+    repo: params.repo,
+    issueNumber: params.issueNumber,
+    username: params.winningPrAuthor,
+    wallet: walletFromPr,
+    amount: params.amount,
+    issueId: params.issueId,
+  });
+
+  return {
+    results: [result],
+    totalAmount: params.amount,
+    isSplit: false,
+  };
 }
