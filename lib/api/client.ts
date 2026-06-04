@@ -166,6 +166,15 @@ export async function approveBounty(params: {
     txHash: string | null;
     transactionId: string;
     approvedBy: string;
+    recipients: Array<{
+      username: string;
+      amount: number;
+      payoutType: "wallet" | "email" | "unclaimed";
+      recipientEmail?: string | null;
+      recipientWallet?: string | null;
+      txHash: string | null;
+      transactionId: string;
+    }>;
   };
 }> {
   const res = await fetch(
