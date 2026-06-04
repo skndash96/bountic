@@ -26,17 +26,19 @@ export function ApproveButton({ owner, repo, issueNumber }: Props) {
     startTransition(async () => {
       try {
         const response = await approveBounty({ owner, repo, issueNumber });
-        const { payoutType, recipientEmail, recipientWallet } = response.payout;
-        
+        const payouts = response.payout.payouts ?? [response.payout];
+
         let message = "";
-        if (payoutType === "wallet" && recipientWallet) {
-          message = `Payout sent to wallet ${recipientWallet.slice(0, 6)}...${recipientWallet.slice(-4)}`;
-        } else if (payoutType === "email" && recipientEmail) {
-          message = `Payout sent to ${recipientEmail}`;
-        } else if (payoutType === "unclaimed") {
+        if (payouts.length > 1) {
+          message = `${payouts.length} payouts sent for $${response.payout.amount.toFixed(2)} USDC total.`;
+        } else if (response.payout.payoutType === "wallet" && response.payout.recipientWallet) {
+          message = `Payout sent to wallet ${response.payout.recipientWallet.slice(0, 6)}...${response.payout.recipientWallet.slice(-4)}`;
+        } else if (response.payout.payoutType === "email" && response.payout.recipientEmail) {
+          message = `Payout sent to ${response.payout.recipientEmail}`;
+        } else if (response.payout.payoutType === "unclaimed") {
           message = "Winner not connected. Notified via issue comment to claim.";
         }
-        
+
         setSuccessTxHash(message);
         router.refresh();
       } catch (e) {
