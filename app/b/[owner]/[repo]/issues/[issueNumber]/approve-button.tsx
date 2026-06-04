@@ -17,19 +17,21 @@ export function ApproveButton({ owner, repo, issueNumber }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [successTxHash, setSuccessTxHash] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const onApprove = () => {
     setError(null);
-    setSuccessTxHash(null);
+    setSuccessMessage(null);
 
     startTransition(async () => {
       try {
         const response = await approveBounty({ owner, repo, issueNumber });
-        const { payoutType, recipientEmail, recipientWallet } = response.payout;
-        
+        const { payoutType, recipientEmail, recipientWallet, recipients } = response.payout;
+
         let message = "";
-        if (payoutType === "wallet" && recipientWallet) {
+        if (recipients.length > 1) {
+          message = `Payout split across ${recipients.length} recipients.`;
+        } else if (payoutType === "wallet" && recipientWallet) {
           message = `Payout sent to wallet ${recipientWallet.slice(0, 6)}...${recipientWallet.slice(-4)}`;
         } else if (payoutType === "email" && recipientEmail) {
           message = `Payout sent to ${recipientEmail}`;
@@ -37,7 +39,7 @@ export function ApproveButton({ owner, repo, issueNumber }: Props) {
           message = "Winner not connected. Notified via issue comment to claim.";
         }
         
-        setSuccessTxHash(message);
+        setSuccessMessage(message);
         router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to approve payout");
@@ -64,8 +66,8 @@ export function ApproveButton({ owner, repo, issueNumber }: Props) {
         )}
       </Button>
       {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
-      {successTxHash ? (
-        <p className="mt-3 text-sm text-emerald-300">{successTxHash}</p>
+      {successMessage ? (
+        <p className="mt-3 text-sm text-emerald-300">{successMessage}</p>
       ) : null}
     </div>
   );
