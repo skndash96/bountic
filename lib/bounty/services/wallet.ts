@@ -1,15 +1,16 @@
 import "server-only";
 
 import { getSupabaseServiceClient } from "@/lib/clients/supabase/server";
-
-const LOCUS_WALLET_REGEX = /<!--\s*locus-wallet:\s*(0x[a-fA-F0-9]{40})\s*-->/i;
+import { BOUNTIC_ADDRESS_TAG_REGEX, LOCUS_WALLET_TAG_REGEX } from "@/lib/constants/bounty";
 
 export async function resolveWalletAddress(params: {
   prDescription: string | null;
   prAuthorUsername: string;
 }): Promise<string | null> {
   if (params.prDescription) {
-    const walletMatch = LOCUS_WALLET_REGEX.exec(params.prDescription);
+    const walletMatch =
+      BOUNTIC_ADDRESS_TAG_REGEX.exec(params.prDescription) ??
+      LOCUS_WALLET_TAG_REGEX.exec(params.prDescription);
 
     if (walletMatch) {
       return walletMatch[1];
