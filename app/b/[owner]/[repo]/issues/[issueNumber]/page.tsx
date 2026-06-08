@@ -133,6 +133,37 @@ export default async function BountyDetailPage(props: Props) {
     bounty.issue_url ??
     `https://github.com/${owner}/${repo}/issues/${issueNumber}`;
   const nextPath = `/b/${owner}/${repo}/issues/${issueNumber}`;
+  const payoutCandidateMap = new Map<
+    string,
+    { githubUsername: string; prNumber: number | null; rank: number }
+  >();
+
+  if (bounty.winning_pr_author) {
+    payoutCandidateMap.set(bounty.winning_pr_author.toLowerCase(), {
+      githubUsername: bounty.winning_pr_author,
+      prNumber: bounty.winning_pr_number,
+      rank: 0,
+    });
+  }
+
+  for (const event of bounty.activity) {
+    if (event.event_type !== "PR_COMPETING" || !event.actor_username) {
+      continue;
+    }
+
+    const key = event.actor_username.toLowerCase();
+    if (!payoutCandidateMap.has(key)) {
+      payoutCandidateMap.set(key, {
+        githubUsername: event.actor_username,
+        prNumber: event.pr_number,
+        rank: 1,
+      });
+    }
+  }
+
+  const payoutCandidates = [...payoutCandidateMap.values()]
+    .sort((a, b) => a.rank - b.rank || a.githubUsername.localeCompare(b.githubUsername))
+    .map(({ githubUsername, prNumber }) => ({ githubUsername, prNumber }));
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8">
@@ -239,6 +270,8 @@ export default async function BountyDetailPage(props: Props) {
                     owner={owner}
                     repo={repo}
                     issueNumber={Number(issueNumber)}
+                    totalAmount={bounty.total_amount}
+                    payoutCandidates={payoutCandidates}
                   />
                 </div>
               ) : null}

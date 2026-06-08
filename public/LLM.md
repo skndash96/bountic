@@ -146,6 +146,31 @@ Response:
 
 Requires GitHub OAuth session + repo permission (admin/maintain/write).
 
+Optional body for explicit multi-contributor payout:
+```
+{
+  "splitPayouts": [
+    {
+      "githubUsername": "contributor-a",
+      "amount": 6.25,
+      "prNumber": 14
+    },
+    {
+      "githubUsername": "contributor-b",
+      "amount": 3.75,
+      "prNumber": 30
+    }
+  ]
+}
+```
+
+Rules:
+- When omitted, approval pays the locked winning PR author the full bounty, matching the original behavior.
+- When provided, `splitPayouts` amounts must be positive and must sum exactly to the bounty total in cents.
+- `githubUsername` values must be unique after removing an optional leading `@`.
+- `prNumber` is optional, but when present Bountic reads that PR body for the wallet tag.
+- Each split recipient creates its own `payout_events` row and `PAYOUT_SENT` activity event.
+
 Response:
 ```
 {
@@ -159,7 +184,19 @@ Response:
     "recipientWallet": null,
     "txHash": null,
     "transactionId": "...",
-    "approvedBy": "github_username"
+    "approvedBy": "github_username",
+    "splitPayout": false,
+    "payouts": [
+      {
+        "amount": 0,
+        "recipient": "...",
+        "payoutType": "wallet|email|unclaimed",
+        "recipientEmail": null,
+        "recipientWallet": null,
+        "txHash": null,
+        "transactionId": "..."
+      }
+    ]
   }
 }
 ```
