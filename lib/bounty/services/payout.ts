@@ -4,8 +4,7 @@ import { getLocusServerClient } from "@/lib/clients/locus/server";
 import { getSupabaseServiceClient } from "@/lib/clients/supabase/server";
 import { getSupabaseServerEnv } from "@/lib/env/server";
 import { getGithubInstallationClient, getGithubRepoInstallationId } from "@/lib/clients/github/server";
-
-const BOUNTIC_ADDRESS_REGEX = /<!--\s*bountic-address:\s*(0x[a-fA-F0-9]{40})\s*-->/i;
+import { BOUNTIC_ADDRESS_TAG_REGEX, LOCUS_WALLET_TAG_REGEX } from "@/lib/constants/bounty";
 
 export type PayoutResult = {
   transactionId: string;
@@ -17,7 +16,7 @@ export type PayoutResult = {
 
 function extractWalletFromPrBody(prBody: string | null): string | null {
   if (!prBody) return null;
-  const match = BOUNTIC_ADDRESS_REGEX.exec(prBody);
+  const match = BOUNTIC_ADDRESS_TAG_REGEX.exec(prBody) ?? LOCUS_WALLET_TAG_REGEX.exec(prBody);
   return match ? match[1] : null;
 }
 
