@@ -15,7 +15,18 @@ export type PayoutResult = {
   recipientWallet?: string | null;
 };
 
-function extractWalletFromPrBody(prBody: string | null): string | null {
+export type PayoutRecipientInput = {
+  githubUsername: string;
+  prBody: string | null;
+  amount: number;
+};
+
+export type PayoutRecipientResult = PayoutResult & {
+  recipient: string;
+  amount: number;
+};
+
+export function extractWalletFromPrBody(prBody: string | null): string | null {
   if (!prBody) return null;
   const match = BOUNTIC_ADDRESS_REGEX.exec(prBody);
   return match ? match[1] : null;
@@ -137,17 +148,17 @@ Once connected, a maintainer can approve your payout and the funds will be sent 
   };
 }
 
-export async function resolveAndPayout(params: {
+export async function resolvePayoutRecipient(params: {
   owner: string;
   repo: string;
   issueNumber: number;
-  winningPrAuthor: string;
-  winningPrBody: string | null;
+  recipientUsername: string;
+  recipientPrBody: string | null;
   amount: number;
   issueId: string;
 }): Promise<PayoutResult> {
-  const walletFromPr = extractWalletFromPrBody(params.winningPrBody);
-  const recipientEmail = await getRecipientEmail(params.winningPrAuthor);
+  const walletFromPr = extractWalletFromPrBody(params.recipientPrBody);
+  const recipientEmail = await getRecipientEmail(params.recipientUsername);
 
   if (walletFromPr) {
     return callLocusPayoutByWallet({
@@ -169,7 +180,57 @@ export async function resolveAndPayout(params: {
     owner: params.owner,
     repo: params.repo,
     issueNumber: params.issueNumber,
-    winningPrAuthor: params.winningPrAuthor,
+    winningPrAuthor: params.recipientUsername,
+    amount: params.amount,
+    issueId: params.issueId,
+  });
+}
+
+export async function resolveAndPayoutMany(params: {
+  owner: string;
+  repo: string;
+  issueNumber: number;
+  recipients: PayoutRecipientInput[];
+  issueId: string;
+}): Promise<PayoutRecipientResult[]> {
+  const results: PayoutRecipientResult[] = [];
+
+  for (const recipient of params.recipients) {
+    const payout = await resolvePayoutRecipient({
+      owner: params.owner,
+      repo: params.repo,
+      issueNumber: params.issueNumber,
+      recipientUsername: recipient.githubUsername,
+      recipientPrBody: recipient.prBody,
+      amount: recipient.amount,
+      issueId: params.issueId,
+    });
+
+    results.push({
+      ...payout,
+      recipient: recipient.githubUsername,
+      amount: recipient.amount,
+    });
+  }
+
+  return results;
+}
+
+export async function resolveAndPayout(params: {
+  owner: string;
+  repo: string;
+  issueNumber: number;
+  winningPrAuthor: string;
+  winningPrBody: string | null;
+  amount: number;
+  issueId: string;
+}): Promise<PayoutResult> {
+  return resolvePayoutRecipient({
+    owner: params.owner,
+    repo: params.repo,
+    issueNumber: params.issueNumber,
+    recipientUsername: params.winningPrAuthor,
+    recipientPrBody: params.winningPrBody,
     amount: params.amount,
     issueId: params.issueId,
   });
