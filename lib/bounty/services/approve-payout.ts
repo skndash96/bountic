@@ -1,3 +1,4 @@
+
 import "server-only";
 
 import { resolveAndPayout } from "@/lib/bounty/services/payout";
@@ -57,7 +58,6 @@ export async function approveBountyPayout(params: {
     }
   }
 
-  // only single payout for now, later multiple payouts
   const payoutResult = await resolveAndPayout({
     owner: params.owner,
     repo: params.repo,
@@ -84,21 +84,23 @@ export async function approveBountyPayout(params: {
     throw new Error(`Failed to update bounty status to PAID: ${updateError.message}`);
   }
 
-  const { error: payoutEventError } = await supabase.from("payout_events").insert({
-    issue_id: issueId,
-    recipient_username: bounty.winning_pr_author,
-    amount: bounty.total_amount,
-    locus_transaction_id: payoutResult.transactionId,
-    transaction_hash: payoutResult.txHash,
-    status: "SUCCESS",
-    metadata: {
-      approved_by: params.approvedBy,
-      payout_source: "web",
-      payout_type: payoutResult.payoutType,
-      recipient_email: payoutResult.recipientEmail,
-      recipient_wallet: payoutResult.recipientWallet,
-    },
-  });
+  const { error: payoutEventError } = await supabase.from("payout_events").insert(
+    payoutResult.recipients.map((recipient) => ({
+      issue_id: issueId,
+      recipient_username: recipient.recipientUsername,
+      amount: recipient.amount,
+      locus_transaction_id: recipient.transactionId,
+      transaction_hash: recipient.txHash,
+      status: "SUCCESS" as const,
+      metadata: {
+        approved_by: params.approvedBy,
+        payout_source: "web",
+        payout_type: recipient.payoutType,
+        recipient_email: recipient.recipientEmail,
+        recipient_wallet: recipient.recipientWallet,
+      },
+    })),
+  );
 
   if (payoutEventError) {
     throw new Error(`Failed to persist payout event: ${payoutEventError.message}`);
@@ -114,6 +116,13 @@ export async function approveBountyPayout(params: {
       approved_by: params.approvedBy,
       payout_source: "web",
       payout_type: payoutResult.payoutType,
+      recipients: payoutResult.recipients.map((recipient) => ({
+        username: recipient.recipientUsername,
+        amount: recipient.amount,
+        payout_type: recipient.payoutType,
+        recipient_wallet: recipient.recipientWallet,
+        recipient_email: recipient.recipientEmail,
+      })),
     },
   });
 
@@ -130,6 +139,7 @@ export async function approveBountyPayout(params: {
     payoutType: payoutResult.payoutType,
     recipientEmail: payoutResult.recipientEmail,
     recipientWallet: payoutResult.recipientWallet,
+    recipients: payoutResult.recipients,
     txHash: payoutResult.txHash,
     transactionId: payoutResult.transactionId,
     approvedBy: params.approvedBy,
