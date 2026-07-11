@@ -93,6 +93,7 @@ export async function approveBountyPayout(params: {
       destination: await resolvePayoutDestination({
         githubUsername: share.username,
         pullRequestBody: share.username === bounty.winning_pr_author ? winningPrBody : null,
+        walletAddress: share.walletAddress,
       }),
     })),
   );
@@ -139,6 +140,7 @@ export async function approveBountyPayout(params: {
       issueNumber: params.issueNumber,
       winningPrAuthor: share.username,
       winningPrBody: share.username === bounty.winning_pr_author ? winningPrBody : null,
+      walletAddress: share.walletAddress,
       amount: share.amount,
       issueId,
     });

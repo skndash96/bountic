@@ -7,10 +7,12 @@ export type PullRequestCommitContributor = {
 export type PayoutShare = {
   username: string;
   amount: number;
+  walletAddress?: string;
 };
 
 const GITHUB_LOGIN = /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i;
 const EXPLICIT_SPLIT = /<!--\s*bountic-split:\s*([\s\S]*?)-->/gi;
+const EVM_ADDRESS = /^0x[a-f\d]{40}$/i;
 
 function addUniqueLogin(logins: string[], seen: Set<string>, login: string | null | undefined) {
   const normalized = login?.trim();
@@ -103,9 +105,13 @@ export function splitBountyAmount(totalAmount: number, recipients: string[]): Pa
  * percentages so it remains valid when a sponsor changes the bounty amount:
  *
  * <!-- bountic-split:
- * @alice 60%
+ * @alice 60% 0x1111111111111111111111111111111111111111
  * @bob 40%
  * -->
+ *
+ * A wallet is optional. When supplied, it wins over the recipient's connected
+ * payout destination, making it possible to pay collaborators who have not
+ * linked their GitHub account to Bountic yet.
  */
 export function explicitPayoutShares(totalAmount: number, pullRequestBody: string | null): PayoutShare[] | null {
   if (!pullRequestBody) return null;
@@ -124,9 +130,9 @@ export function explicitPayoutShares(totalAmount: number, pullRequestBody: strin
   if (rows.length === 0) throw new Error("The bountic-split declaration is empty");
 
   const seen = new Set<string>();
-  const recipients: Array<{ username: string; basisPoints: number }> = [];
+  const recipients: Array<{ username: string; basisPoints: number; walletAddress?: string }> = [];
   for (const row of rows) {
-    const rowMatch = /^@?([a-z\d](?:[a-z\d-]{0,37}[a-z\d])?)\s+(\d+(?:\.\d{1,2})?)%$/i.exec(row);
+    const rowMatch = /^@?([a-z\d](?:[a-z\d-]{0,37}[a-z\d])?)\s+(\d+(?:\.\d{1,2})?)%(?:\s+(0x[a-f\d]{40}))?$/i.exec(row);
     if (!rowMatch) {
       throw new Error(`Invalid bountic-split row: ${row}`);
     }
@@ -140,7 +146,11 @@ export function explicitPayoutShares(totalAmount: number, pullRequestBody: strin
     }
 
     seen.add(key);
-    recipients.push({ username, basisPoints });
+    const walletAddress = rowMatch[3];
+    if (walletAddress && !EVM_ADDRESS.test(walletAddress)) {
+      throw new Error(`Invalid bountic-split wallet for @${username}`);
+    }
+    recipients.push({ username, basisPoints, walletAddress });
   }
 
   const totalBasisPoints = recipients.reduce((sum, recipient) => sum + recipient.basisPoints, 0);
@@ -175,5 +185,5 @@ export function explicitPayoutShares(totalAmount: number, pullRequestBody: strin
     throw new Error("Every bountic-split recipient must receive at least one cent");
   }
 
-  return allocated.map(({ username, cents }) => ({ username, amount: cents / 100 }));
+  return allocated.map(({ username, cents, walletAddress }) => ({ username, amount: cents / 100, walletAddress }));
 }

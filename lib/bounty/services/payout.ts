@@ -38,8 +38,9 @@ async function getRecipientEmail(githubUsername: string): Promise<string | null>
 export async function resolvePayoutDestination(params: {
   githubUsername: string;
   pullRequestBody: string | null;
+  walletAddress?: string;
 }): Promise<PayoutDestination | null> {
-  const walletFromPr = extractWalletFromPrBody(params.pullRequestBody);
+  const walletFromPr = params.walletAddress ?? extractWalletFromPrBody(params.pullRequestBody);
   if (walletFromPr) return { payoutType: "wallet", recipientWallet: walletFromPr };
 
   const recipientEmail = await getRecipientEmail(params.githubUsername);
@@ -160,12 +161,14 @@ export async function resolveAndPayout(params: {
   issueNumber: number;
   winningPrAuthor: string;
   winningPrBody: string | null;
+  walletAddress?: string;
   amount: number;
   issueId: string;
 }): Promise<PayoutResult> {
   const destination = await resolvePayoutDestination({
     githubUsername: params.winningPrAuthor,
     pullRequestBody: params.winningPrBody,
+    walletAddress: params.walletAddress,
   });
 
   if (destination?.payoutType === "wallet") {
