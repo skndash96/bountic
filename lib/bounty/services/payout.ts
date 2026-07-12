@@ -15,6 +15,10 @@ export type PayoutResult = {
   recipientWallet?: string | null;
 };
 
+export type PayoutDestination =
+  | { payoutType: "wallet"; recipientWallet: string }
+  | { payoutType: "email"; recipientEmail: string };
+
 function extractWalletFromPrBody(prBody: string | null): string | null {
   if (!prBody) return null;
   const match = BOUNTIC_ADDRESS_REGEX.exec(prBody);
@@ -29,6 +33,20 @@ async function getRecipientEmail(githubUsername: string): Promise<string | null>
     .eq("github_username", githubUsername)
     .maybeSingle();
   return user?.email ?? null;
+}
+
+export async function resolvePayoutDestination(params: {
+  githubUsername: string;
+  pullRequestBody: string | null;
+  walletAddress?: string;
+}): Promise<PayoutDestination | null> {
+  const walletFromPr = params.walletAddress ?? extractWalletFromPrBody(params.pullRequestBody);
+  if (walletFromPr) return { payoutType: "wallet", recipientWallet: walletFromPr };
+
+  const recipientEmail = await getRecipientEmail(params.githubUsername);
+  if (recipientEmail) return { payoutType: "email", recipientEmail };
+
+  return null;
 }
 
 async function commentOnIssue(params: {
@@ -143,23 +161,27 @@ export async function resolveAndPayout(params: {
   issueNumber: number;
   winningPrAuthor: string;
   winningPrBody: string | null;
+  walletAddress?: string;
   amount: number;
   issueId: string;
 }): Promise<PayoutResult> {
-  const walletFromPr = extractWalletFromPrBody(params.winningPrBody);
-  const recipientEmail = await getRecipientEmail(params.winningPrAuthor);
+  const destination = await resolvePayoutDestination({
+    githubUsername: params.winningPrAuthor,
+    pullRequestBody: params.winningPrBody,
+    walletAddress: params.walletAddress,
+  });
 
-  if (walletFromPr) {
+  if (destination?.payoutType === "wallet") {
     return callLocusPayoutByWallet({
-      toAddress: walletFromPr,
+      toAddress: destination.recipientWallet,
       amount: params.amount,
       memo: `Bountic payout for ${params.issueId}`,
     });
   }
 
-  if (recipientEmail) {
+  if (destination?.payoutType === "email") {
     return callLocusPayoutByEmail({
-      toEmail: recipientEmail,
+      toEmail: destination.recipientEmail,
       amount: params.amount,
       memo: `Bountic payout for ${params.issueId}`,
     });

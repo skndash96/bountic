@@ -26,7 +26,7 @@ export function ApproveButton({ owner, repo, issueNumber }: Props) {
     startTransition(async () => {
       try {
         const response = await approveBounty({ owner, repo, issueNumber });
-        const { payoutType, recipientEmail, recipientWallet } = response.payout;
+        const { payoutType, recipientEmail, recipientWallet, payouts } = response.payout;
         
         let message = "";
         if (payoutType === "wallet" && recipientWallet) {
@@ -37,7 +37,7 @@ export function ApproveButton({ owner, repo, issueNumber }: Props) {
           message = "Winner not connected. Notified via issue comment to claim.";
         }
         
-        setSuccessTxHash(message);
+        setSuccessTxHash(payouts.length > 1 ? `${message}. Split across ${payouts.length} contributors.` : message);
         router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to approve payout");
