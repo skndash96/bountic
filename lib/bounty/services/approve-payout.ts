@@ -87,12 +87,14 @@ export async function approveBountyPayout(params: {
   const payoutShares =
     explicitPayoutShares(bounty.total_amount, winningPrBody) ??
     splitBountyAmount(bounty.total_amount, contributorLogins);
+  const isPrimaryAuthor = (username: string) =>
+    username.toLowerCase() === bounty.winning_pr_author!.toLowerCase();
   const destinations = await Promise.all(
     payoutShares.map(async (share) => ({
       share,
       destination: await resolvePayoutDestination({
         githubUsername: share.username,
-        pullRequestBody: share.username === bounty.winning_pr_author ? winningPrBody : null,
+        pullRequestBody: isPrimaryAuthor(share.username) ? winningPrBody : null,
         walletAddress: share.walletAddress,
       }),
     })),
@@ -139,7 +141,7 @@ export async function approveBountyPayout(params: {
       repo: params.repo,
       issueNumber: params.issueNumber,
       winningPrAuthor: share.username,
-      winningPrBody: share.username === bounty.winning_pr_author ? winningPrBody : null,
+      winningPrBody: isPrimaryAuthor(share.username) ? winningPrBody : null,
       walletAddress: share.walletAddress,
       amount: share.amount,
       issueId,
