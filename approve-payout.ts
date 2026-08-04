@@ -1,6 +1,6 @@
 import "server-only";
 
-import { resolveAndPayout, resolvePayoutDestination } from "@/lib/bounty/services/payout";
+import { resolveAndPayout, resolvePayoutDestination } from "@/payout";
 import { syncGithubBountyArtifacts } from "@/lib/bounty/services/github-sync";
 import { getSupabaseServiceClient } from "@/lib/clients/supabase/server";
 import { getGithubInstallationClient, getGithubRepoInstallationId } from "@/lib/clients/github/server";
@@ -10,7 +10,7 @@ import {
   splitBountyAmount,
   type PullRequestCommitContributor,
   uniqueContributorLogins,
-} from "@/lib/bounty/payout-recipients";
+} from "@/payout-recipients";
 
 type CompletedPayout = {
   recipient: string;
