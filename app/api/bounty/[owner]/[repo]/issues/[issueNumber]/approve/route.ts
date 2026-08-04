@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getViewerRepoPermission } from "@/lib/auth/github-permissions";
-import { approveBountyPayout } from "@/lib/bounty/services/approve-payout";
+// Use the multi-contributor implementation shipped by this PR. The legacy
+// service only resolves a single recipient and would bypass split payouts.
+import { approveBountyPayout } from "@/approve-payout";
 
 const routeParamsSchema = z.object({
   owner: z.string().min(1),
