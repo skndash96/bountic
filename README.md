@@ -48,6 +48,10 @@ This hackathon by Locus provided the exact infrastructure to solve this. So, I b
 3. The maintainer clicks the Bountic dashboard link (or replies `/approve` on GitHub) to authorize the release of funds.
 4. Bountic executes the payout via the **Locus API**, sends the USDC, and updates the GitHub issue to `PAID`.
 
+Maintainers can also specify contributor percentages and preview the amounts
+before approving. See [split payouts](docs/split-payouts.md) for the API,
+required database migration, and interrupted-payment reconciliation procedure.
+
 ---
 
 ## 🛠 Tech Stack

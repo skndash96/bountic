@@ -23,12 +23,31 @@ function extractWalletFromPrBody(prBody: string | null): string | null {
 
 async function getRecipientEmail(githubUsername: string): Promise<string | null> {
   const supabase = getSupabaseServiceClient();
-  const { data: user } = await supabase
+  const { data: user, error } = await supabase
     .from("users")
     .select("email")
-    .eq("github_username", githubUsername)
+    .ilike("github_username", githubUsername)
     .maybeSingle();
+  if (error) throw new Error(`Failed to resolve payout recipient: ${error.message}`);
   return user?.email ?? null;
+}
+
+export type PayoutDestination = { wallet: string } | { email: string };
+
+export async function resolvePayoutDestination(username: string, ownPrBody: string | null): Promise<PayoutDestination> {
+  const wallet = extractWalletFromPrBody(ownPrBody);
+  if (wallet) return { wallet };
+  const email = await getRecipientEmail(username);
+  if (!email) throw new Error(`@${username} must connect a payout email before approval`);
+  return { email };
+}
+
+export async function sendResolvedPayout(destination: PayoutDestination, amount: number, memo: string): Promise<PayoutResult> {
+  const result = "wallet" in destination
+    ? await callLocusPayoutByWallet({ toAddress: destination.wallet, amount, memo })
+    : await callLocusPayoutByEmail({ toEmail: destination.email, amount, memo });
+  if (!result.transactionId) throw new Error("Locus returned no transaction ID; reconcile before retrying");
+  return result;
 }
 
 async function commentOnIssue(params: {
