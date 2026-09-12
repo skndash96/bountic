@@ -28,11 +28,20 @@ export async function POST(
   }
 
   try {
+    // Empty requests retain the existing single-author approval behavior.
+    const rawBody = await request.text();
+    const body = z.object({
+      shares: z.array(z.object({
+        username: z.string(),
+        basisPoints: z.number().int().positive().max(10000),
+      }).strict()).min(1).max(50).optional(),
+    }).strict().parse(rawBody.trim() ? JSON.parse(rawBody) : {});
     const result = await approveBountyPayout({
       owner: routeParams.owner,
       repo: routeParams.repo,
       issueNumber: routeParams.issueNumber,
       approvedBy: viewer.githubUsername,
+      shares: body.shares,
     });
 
     return NextResponse.json({ success: true, payout: result });

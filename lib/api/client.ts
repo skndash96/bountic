@@ -154,17 +154,20 @@ export async function approveBounty(params: {
   owner: string;
   repo: string;
   issueNumber: number;
+  shares?: Array<{ username: string; basisPoints: number }>;
 }): Promise<{
   success: boolean;
   payout: {
     issueId: string;
     amount: number;
     recipient: string;
-    payoutType: "wallet" | "email" | "unclaimed";
+    payoutType: "wallet" | "email" | "unclaimed" | "split";
     recipientEmail: string | null;
     recipientWallet: string | null;
     txHash: string | null;
-    transactionId: string;
+    transactionId: string | null;
+    recipients: Array<{ username: string; amount: number; transactionId: string; txHash: string | null }>;
+    syncWarning?: string;
     approvedBy: string;
   };
 }> {
@@ -172,6 +175,8 @@ export async function approveBounty(params: {
     `${API_BASE}/api/bounty/${params.owner}/${params.repo}/issues/${params.issueNumber}/approve`,
     {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params.shares ? { shares: params.shares } : {}),
     },
   );
 
