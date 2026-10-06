@@ -91,7 +91,7 @@ Set `LOCUS_MOCK=true` in your environment. This will:
 
 You can manually trigger a successful funding event via curl in mock mode:
 ```bash
-curl -X POST [https://your-domain.com/api/webhooks/locus/mock](https://your-domain.com/api/webhooks/locus/mock) \
+curl -X POST https://your-domain.com/api/webhooks/locus/mock \
   -H "Content-Type: application/json" \
   -d '{"sessionId":"<test_checkout_session_id>"}'
 ```
@@ -102,7 +102,7 @@ curl -X POST [https://your-domain.com/api/webhooks/locus/mock](https://your-doma
 
 **1. Clone and install dependencies**
 ```bash
-git clone [https://github.com/yourusername/bountic.git](https://github.com/yourusername/bountic.git)
+git clone https://github.com/skndash96/bountic.git
 cd bountic
 npm install
 ```
@@ -129,7 +129,7 @@ GITHUB_WEBHOOK_SECRET=
 # Locus
 LOCUS_MOCK=false
 LOCUS_API_KEY=
-LOCUS_API_BASE_URL=[https://beta-api.paywithlocus.com/api](https://beta-api.paywithlocus.com/api)
+LOCUS_API_BASE_URL=https://beta-api.paywithlocus.com/api
 LOCUS_WEBHOOK_SECRET=
 ```
 
