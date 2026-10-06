@@ -154,24 +154,36 @@ export async function approveBounty(params: {
   owner: string;
   repo: string;
   issueNumber: number;
+  splitPayouts?: Array<{ githubUsername: string; amount: number }>;
 }): Promise<{
   success: boolean;
   payout: {
     issueId: string;
     amount: number;
-    recipient: string;
-    payoutType: "wallet" | "email" | "unclaimed";
-    recipientEmail: string | null;
-    recipientWallet: string | null;
-    txHash: string | null;
-    transactionId: string;
+    recipient?: string;
+    payoutType?: "wallet" | "email" | "unclaimed";
+    recipientEmail?: string | null;
+    recipientWallet?: string | null;
+    txHash?: string | null;
+    transactionId?: string;
+    recipients?: Array<{
+      githubUsername: string;
+      amount: number;
+      payoutType: "email";
+      recipientEmail: string | null;
+      txHash: string | null;
+      transactionId: string;
+    }>;
     approvedBy: string;
+    warnings?: string[];
   };
 }> {
   const res = await fetch(
     `${API_BASE}/api/bounty/${params.owner}/${params.repo}/issues/${params.issueNumber}/approve`,
     {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params.splitPayouts ? { splitPayouts: params.splitPayouts } : {}),
     },
   );
 

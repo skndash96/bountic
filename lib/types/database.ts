@@ -200,6 +200,35 @@ export type Database = {
           },
         ];
       };
+      payout_batches: {
+        Row: {
+          issue_id: string;
+          approved_by: string;
+          plan: Json;
+          created_at: string;
+        };
+        Insert: {
+          issue_id: string;
+          approved_by: string;
+          plan: Json;
+          created_at?: string;
+        };
+        Update: {
+          issue_id?: string;
+          approved_by?: string;
+          plan?: Json;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "payout_batches_issue_id_fkey";
+            columns: ["issue_id"];
+            isOneToOne: true;
+            referencedRelation: "bounties";
+            referencedColumns: ["issue_id"];
+          },
+        ];
+      };
       payout_events: {
         Row: {
           id: string;

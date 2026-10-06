@@ -239,6 +239,7 @@ export default async function BountyDetailPage(props: Props) {
                     owner={owner}
                     repo={repo}
                     issueNumber={Number(issueNumber)}
+                    totalAmount={bounty.total_amount}
                   />
                 </div>
               ) : null}

@@ -21,12 +21,12 @@ function extractWalletFromPrBody(prBody: string | null): string | null {
   return match ? match[1] : null;
 }
 
-async function getRecipientEmail(githubUsername: string): Promise<string | null> {
+export async function getRecipientEmail(githubUsername: string): Promise<string | null> {
   const supabase = getSupabaseServiceClient();
   const { data: user } = await supabase
     .from("users")
     .select("email")
-    .eq("github_username", githubUsername)
+    .ilike("github_username", githubUsername.trim())
     .maybeSingle();
   return user?.email ?? null;
 }

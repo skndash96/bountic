@@ -117,6 +117,20 @@ create index if not exists activity_events_created_at_idx on public.activity_eve
 create index if not exists payout_events_issue_id_idx on public.payout_events(issue_id);
 create index if not exists payout_events_recipient_username_idx
   on public.payout_events(recipient_username);
+create unique index if not exists payout_events_split_reservation_unique_idx
+  on public.payout_events(issue_id, lower(recipient_username))
+  where (metadata ->> 'split_payout') = 'true';
+
+
+create table if not exists public.payout_batches (
+  issue_id text primary key references public.bounties(issue_id) on delete restrict,
+  approved_by text not null,
+  plan jsonb not null,
+  created_at timestamptz not null default now()
+);
+alter table public.payout_batches enable row level security;
+revoke all on public.payout_batches from anon, authenticated;
+grant select, insert on public.payout_batches to service_role;
 
 create table if not exists public.webhook_deliveries (
   id uuid primary key default gen_random_uuid(),
