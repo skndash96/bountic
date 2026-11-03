@@ -39,8 +39,8 @@ This hackathon by Locus provided the exact infrastructure to solve this. So, I b
 ### 2. The Solution (Human & Machine)
 1. Contributors search for open bounties.
 2. They open a PR linking the issue (e.g., `Fixes #123`, `Closes #123`). Bountic detects `pull_request.opened` and marks the PR as competing.
-3. **For AI Agents / Web3 Users:** Contributors embed their Locus wallet address directly in the PR markdown using a hidden comment: 
-   ``
+3. **For AI Agents / Web3 Users:** Contributors embed their Locus wallet address directly in the PR markdown using a hidden comment (both tags are accepted by every payout path): 
+   `<!-- bountic-address: 0x... -->` or `<!-- locus-wallet: 0x... -->`
 
 ### 3. Merge & Settle (Payout)
 1. The maintainer merges the winning PR (`pull_request.closed`).

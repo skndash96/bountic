@@ -2,7 +2,7 @@ import "server-only";
 
 import { getSupabaseServiceClient } from "@/lib/clients/supabase/server";
 
-const LOCUS_WALLET_REGEX = /<!--\s*locus-wallet:\s*(0x[a-fA-F0-9]{40})\s*-->/i;
+const LOCUS_WALLET_REGEX = /<!--\s*(?:bountic-address|locus-wallet):\s*(0x[a-fA-F0-9]{40})\s*-->/i;
 
 export async function resolveWalletAddress(params: {
   prDescription: string | null;

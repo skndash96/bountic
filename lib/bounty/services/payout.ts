@@ -5,7 +5,7 @@ import { getSupabaseServiceClient } from "@/lib/clients/supabase/server";
 import { getSupabaseServerEnv } from "@/lib/env/server";
 import { getGithubInstallationClient, getGithubRepoInstallationId } from "@/lib/clients/github/server";
 
-const BOUNTIC_ADDRESS_REGEX = /<!--\s*bountic-address:\s*(0x[a-fA-F0-9]{40})\s*-->/i;
+const BOUNTIC_ADDRESS_REGEX = /<!--\s*(?:bountic-address|locus-wallet):\s*(0x[a-fA-F0-9]{40})\s*-->/i;
 
 export type PayoutResult = {
   transactionId: string;
